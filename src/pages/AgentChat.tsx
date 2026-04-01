@@ -389,29 +389,36 @@ export default function AgentChat() {
 
   // Consolidated mount effect: fix stuck state + auto-send
   const sentRef = useRef(false);
+  const sendToAgentRef = useRef(sendToAgent);
+
+  useEffect(() => {
+    sendToAgentRef.current = sendToAgent;
+  }, [sendToAgent]);
+
   useEffect(() => {
     if (!critereId || !critere) return;
     sentRef.current = false;
 
     const conv = useChatStore.getState().getConversation(critereId);
     const isStuck = conv.streaming && !abortRef.current;
-    const hasOnlyEmptyMessages = conv.messages.length > 0 && 
-      conv.messages.every(m => m.role === 'assistant' && !m.content);
+    const hasOnlyEmptyMessages =
+      conv.messages.length > 0 && conv.messages.every((m) => m.role === 'assistant' && !m.content);
+    const hasStaleEmptyMessages = hasOnlyEmptyMessages && !conv.streaming && !abortRef.current;
 
     const triggerAutoSend = () => {
       if (sentRef.current) return;
       sentRef.current = true;
-      sendToAgent([]);
+      sendToAgentRef.current([]);
     };
 
-    if (isStuck || hasOnlyEmptyMessages) {
+    if (isStuck || hasStaleEmptyMessages) {
       console.log('[AgentChat] Stuck state detected, resetting', critereId);
       resetConversation(critereId);
       setTimeout(triggerAutoSend, 50);
     } else if (conv.messages.length === 0 && !conv.streaming) {
       triggerAutoSend();
     }
-  }, [critereId, critere, sendToAgent, resetConversation]);
+  }, [critereId, critere, resetConversation]);
 
   const isRequestInFlight = Boolean(conversation?.streaming && abortRef.current);
 
