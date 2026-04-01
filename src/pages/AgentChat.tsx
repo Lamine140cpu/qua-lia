@@ -302,6 +302,13 @@ export default function AgentChat() {
 
           try {
             const parsed = JSON.parse(jsonStr);
+            // OpenAI-compatible format from Lovable AI
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullContent += content;
+              appendToLastAssistant(critereId, content);
+            }
+            // Legacy format
             if (parsed.type === 'delta' && parsed.text) {
               fullContent += parsed.text;
               appendToLastAssistant(critereId, parsed.text);
