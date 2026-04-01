@@ -290,13 +290,22 @@ export default function AgentChat() {
     abortRef.current = controller;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const resp = await fetch(EDGE_FN.chat, {
+      // Get a valid session, refresh if needed
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        session = refreshed.session;
+      }
+      if (!session?.access_token) {
+        throw new Error('Session expirée — veuillez vous reconnecter.');
+      }
+
+      const doFetch = async (token: string) => fetch(EDGE_FN.chat, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           critereId,
@@ -308,6 +317,16 @@ export default function AgentChat() {
         }),
         signal: controller.signal,
       });
+
+      let resp = await doFetch(session.access_token);
+
+      // Retry once on 401 after refreshing session
+      if (resp.status === 401) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        if (refreshed.session?.access_token) {
+          resp = await doFetch(refreshed.session.access_token);
+        }
+      }
 
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({ error: 'Erreur réseau' }));
@@ -396,8 +415,12 @@ export default function AgentChat() {
     }
   }, [critereId, critere, cfaInfo, formations, organisation, addMessage, appendToLastAssistant, setStreaming, addGeneratedDoc, setDocStatus, setCfaInfo, setOrganisation, toast]);
 
+  const isRequestInFlight = Boolean(conversation?.streaming && abortRef.current);
+
   const handleSend = useCallback(() => {
-    if (!input.trim() || !critereId || !conversation || conversation.streaming) return;
+    if (!input.trim() || !critereId || !conversation) return;
+    // Only block if there's actually a request in flight
+    if (conversation.streaming && abortRef.current) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
