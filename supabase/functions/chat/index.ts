@@ -403,50 +403,57 @@ serve(async (req) => {
       }
     }
 
-    // Call Anthropic API with Claude Sonnet
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
+    // Call Lovable AI Gateway (temporaire pendant la construction)
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée" }),
+        JSON.stringify({ error: "LOVABLE_API_KEY non configurée" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "google/gemini-3-flash-preview",
         max_tokens: 8192,
-        system: systemPrompt,
-        messages: aiMessages,
         stream: true,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...aiMessages,
+        ],
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error("Anthropic error:", aiResponse.status, errorText);
+      console.error("Lovable AI gateway error:", aiResponse.status, errorText);
+
       if (aiResponse.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Limite de requêtes Anthropic atteinte." }),
+          JSON.stringify({ error: "Limite de requêtes Lovable AI atteinte. Réessayez dans un instant." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+
+      if (aiResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ error: "Crédits Lovable AI insuffisants. Merci de recharger l'espace de travail." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
-        JSON.stringify({ error: `Erreur Anthropic: ${aiResponse.status}` }),
+        JSON.stringify({ error: `Erreur Lovable AI: ${aiResponse.status}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Convert Anthropic SSE to OpenAI-compatible SSE for the frontend
-    const openAIStream = anthropicToOpenAIStream(aiResponse.body!);
-
-    return new Response(openAIStream, {
+    return new Response(aiResponse.body, {
       headers: {
         ...corsHeaders,
         "Content-Type": "text/event-stream",
