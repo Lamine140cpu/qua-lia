@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/Navbar';
@@ -169,9 +169,9 @@ function DocumentPreview({ doc }: { doc: { indicateurId: string; titre: string; 
 }
 
 /** Typing indicator — 3 pulsing dots like Claude */
-function TypingIndicator() {
+const TypingIndicator = forwardRef<HTMLDivElement>(function TypingIndicator(_props, ref) {
   return (
-    <div className="flex items-center gap-1.5 py-1">
+    <div ref={ref} className="flex items-center gap-1.5 py-1">
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
@@ -187,7 +187,7 @@ function TypingIndicator() {
       ))}
     </div>
   );
-}
+});
 
 export default function AgentChat() {
   const { critereId } = useParams<{ critereId: string }>();
@@ -251,6 +251,18 @@ export default function AgentChat() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [critereId]);
+
+  // Safety net: if persisted state says streaming but no active request, unlock input
+  useEffect(() => {
+    if (!critereId || !conversation?.streaming) return;
+    const timer = setTimeout(() => {
+      if (conversation.streaming && !abortRef.current) {
+        console.log('[AgentChat] Clearing stale streaming lock', critereId);
+        setStreaming(critereId, false);
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [critereId, conversation?.streaming, setStreaming]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -374,6 +386,7 @@ export default function AgentChat() {
       setStreaming(critereId, false);
       abortRef.current = null;
     } catch (e: any) {
+      abortRef.current = null;
       if (e.name === 'AbortError') {
         setStreaming(critereId, false);
         return;
@@ -587,14 +600,13 @@ export default function AgentChat() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Votre message..."
-              disabled={conversation?.streaming}
               className="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 px-4 pt-3.5 pb-12 rounded-2xl focus:outline-none min-h-[52px] max-h-[200px]"
               rows={1}
             />
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || conversation?.streaming}
+                disabled={!input.trim() || Boolean(conversation?.streaming && abortRef.current)}
                 className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-80 active:scale-95 transition-all"
               >
                 <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
