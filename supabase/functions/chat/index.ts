@@ -377,6 +377,34 @@ serve(async (req) => {
         contextPreamble += `- Locaux : ${organisation.locaux}\n`;
     }
 
+    // Fetch relevant templates for this critère
+    const critereMatch = critereId.match(/(\d+)/);
+    let templateContext = "";
+    if (critereMatch) {
+      const critereNum = parseInt(critereMatch[1]);
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      const { data: templates } = await supabase
+        .from("templates")
+        .select("name, content_markdown")
+        .or(`critere.eq.${critereNum},category.eq.critere_cfa`)
+        .eq("critere", critereNum)
+        .limit(15);
+      
+      if (templates && templates.length > 0) {
+        templateContext = `\n\n[TEMPLATES DISPONIBLES POUR CE CRITÈRE]\nTu disposes de templates pré-rédigés. Quand tu génères un document, base-toi sur ces templates et personnalise-les avec les données de l'organisme.\n\n`;
+        for (const t of templates) {
+          // Truncate to avoid token overflow
+          const content = t.content_markdown.length > 3000 
+            ? t.content_markdown.slice(0, 3000) + "\n[... suite tronquée]"
+            : t.content_markdown;
+          templateContext += `### ${t.name}\n${content}\n\n---\n\n`;
+        }
+      }
+    }
+
     // Build messages for AI
     const typesActions: string[] = cfaInfo?.typesActions || [];
     const systemPrompt = buildAgentSystemPrompt(
@@ -396,10 +424,13 @@ serve(async (req) => {
     const aiMessages: { role: string; content: string }[] = [];
     const history = messages || [];
 
+    // Include template context in first message
+    const fullContext = contextPreamble + templateContext;
+
     if (history.length === 0) {
       aiMessages.push({
         role: "user",
-        content: `Bonjour ! Je travaille sur le ${critereTitle} pour mon ${typeLabel}. Voici les infos de mon établissement. Aide-moi à préparer les documents pour l'audit Qualiopi.${contextPreamble}`,
+        content: `Bonjour ! Je travaille sur le ${critereTitle} pour mon ${typeLabel}. Voici les infos de mon établissement. Aide-moi à préparer les documents pour l'audit Qualiopi.${fullContext}`,
       });
     } else {
       const firstMsg = history[0];
@@ -407,7 +438,7 @@ serve(async (req) => {
         role: firstMsg.role,
         content:
           firstMsg.role === "user"
-            ? firstMsg.content + contextPreamble
+            ? firstMsg.content + fullContext
             : firstMsg.content,
       });
       for (let i = 1; i < history.length; i++) {
