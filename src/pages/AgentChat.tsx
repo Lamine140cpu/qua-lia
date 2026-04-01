@@ -222,32 +222,7 @@ export default function AgentChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
 
-  // Consolidated mount effect: fix stuck state + auto-send
-  const sentRef = useRef(false);
-  useEffect(() => {
-    if (!critereId || !critere) return;
-    sentRef.current = false; // reset on critere change
-
-    const conv = useChatStore.getState().getConversation(critereId);
-    const isStuck = conv.streaming && !abortRef.current;
-    const hasOnlyEmptyMessages = conv.messages.length > 0 && 
-      conv.messages.every(m => m.role === 'assistant' && !m.content);
-
-    const triggerAutoSend = () => {
-      if (sentRef.current) return;
-      sentRef.current = true;
-      // Call sendToAgent on next tick to ensure latest callback reference
-      setTimeout(() => sendToAgent([]), 0);
-    };
-
-    if (isStuck || hasOnlyEmptyMessages) {
-      console.log('[AgentChat] Stuck state detected, resetting', critereId);
-      resetConversation(critereId);
-      setTimeout(triggerAutoSend, 50);
-    } else if (conv.messages.length === 0 && !conv.streaming) {
-      triggerAutoSend();
-    }
-  }, [critereId, critere, sendToAgent, resetConversation]);
+  // (mount effect moved after sendToAgent declaration)
 
   // Safety net: if persisted state says streaming but no active request, unlock input
   useEffect(() => {
