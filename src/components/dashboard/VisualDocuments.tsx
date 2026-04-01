@@ -38,9 +38,17 @@ export function VisualDocuments({ cfaInfo, formations, organisation }: VisualDoc
     setHtml('');
 
     try {
-      const resp = await fetch(`${API_BASE}/api/generate-visual`, {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      const resp = await fetch(EDGE_FN.generateVisual, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ type, prompt, cfaInfo, formations, organisation }),
       });
       if (!resp.ok) {
