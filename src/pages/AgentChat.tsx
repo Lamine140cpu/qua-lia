@@ -265,6 +265,50 @@ export default function AgentChat() {
     [],
   );
 
+  // Hard reset local au chargement du critère: état streaming, saisie, session
+  useEffect(() => {
+    if (!critereId) return;
+
+    setInput('');
+    requestAnimationFrame(() => textareaRef.current?.focus());
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+
+    const conv = useChatStore.getState().getConversation(critereId);
+
+    if (conv.streaming) {
+      setStreaming(critereId, false);
+    }
+
+    const staleAssistantIds = conv.messages
+      .filter((m) => m.role === 'assistant' && !m.content.trim())
+      .map((m) => m.id);
+
+    staleAssistantIds.forEach((id) => removeMessage(critereId, id));
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await getValidAccessToken();
+      } catch {
+        if (cancelled) return;
+        toast({
+          title: 'Session expirée',
+          description: 'Reconnectez-vous pour relancer le chat.',
+          variant: 'destructive',
+        });
+        navigate('/auth', { replace: true });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [critereId, getValidAccessToken, navigate, removeMessage, setStreaming, toast]);
+
   const sendToAgent = useCallback(async (history: ChatMessage[]) => {
     if (!critereId || !critere) return;
 
