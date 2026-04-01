@@ -132,7 +132,7 @@ export function VisualDocuments({ cfaInfo, formations, organisation }: VisualDoc
 
   const handleDownloadDocx = async () => {
     try {
-      const resp = await fetch(`${API_BASE}/api/export-docx`, {
+      const resp = await fetch(`${EDGE_FN.exportMallette}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ markdown: html, filename: visualType.replace(/\s+/g, '_') }),
