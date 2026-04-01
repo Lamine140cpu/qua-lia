@@ -9,6 +9,7 @@ export const EDGE_FN = {
   improveDocument: `${SUPABASE_URL}/functions/v1/improve-document`,
   exportMallette: `${SUPABASE_URL}/functions/v1/export-mallette`,
   generateVisual: `${SUPABASE_URL}/functions/v1/generate-visual`,
+  exportDocx: `${SUPABASE_URL}/functions/v1/export-docx`,
 };
 
 /** Maximum file upload size in bytes (5 MB) */
