@@ -290,14 +290,43 @@ export default function AgentChat() {
     abortRef.current = controller;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const resp = await fetch(EDGE_FN.chat, {
+      // Get a valid session, refresh if needed
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        session = refreshed.session;
+      }
+      if (!session?.access_token) {
+        throw new Error('Session expirée — veuillez vous reconnecter.');
+      }
+
+      const doFetch = async (token: string) => fetch(EDGE_FN.chat, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+          'Authorization': `Bearer ${token}`,
         },
+        body: JSON.stringify({
+          critereId,
+          critereTitle: `Critère ${critereId.replace('critere', '')} — ${critere.titre}`,
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
+          cfaInfo,
+          formations,
+          organisation,
+        }),
+        signal: controller.signal,
+      });
+
+      let resp = await doFetch(session.access_token);
+
+      // Retry once on 401 after refreshing session
+      if (resp.status === 401) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        if (refreshed.session?.access_token) {
+          resp = await doFetch(refreshed.session.access_token);
+        }
+      }
         body: JSON.stringify({
           critereId,
           critereTitle: `Critère ${critereId.replace('critere', '')} — ${critere.titre}`,
