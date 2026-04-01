@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Loader2, Download, Eye, FileText } from 'lucide-react';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { sanitizeHtml } from '@/lib/sanitize';
-import { API_BASE } from '@/lib/constants';
+import { EDGE_FN } from '@/lib/constants';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface VisualDocumentsProps {
@@ -37,9 +38,17 @@ export function VisualDocuments({ cfaInfo, formations, organisation }: VisualDoc
     setHtml('');
 
     try {
-      const resp = await fetch(`${API_BASE}/api/generate-visual`, {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      const resp = await fetch(EDGE_FN.generateVisual, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ type, prompt, cfaInfo, formations, organisation }),
       });
       if (!resp.ok) {
@@ -123,7 +132,7 @@ export function VisualDocuments({ cfaInfo, formations, organisation }: VisualDoc
 
   const handleDownloadDocx = async () => {
     try {
-      const resp = await fetch(`${API_BASE}/api/export-docx`, {
+      const resp = await fetch(`${EDGE_FN.exportMallette}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ markdown: html, filename: visualType.replace(/\s+/g, '_') }),

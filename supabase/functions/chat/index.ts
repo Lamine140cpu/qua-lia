@@ -91,11 +91,7 @@ Indicateurs 2, 3, 11, 13, 14, 19, 22, 24, 25, 26, 32 : formalisation vérifiée 
 
 // ── System Prompt Builders ──
 
-interface TypeLabels {
-  [key: string]: string;
-}
-
-const TYPE_LABELS: TypeLabels = {
+const TYPE_LABELS: Record<string, string> = {
   of: "Actions de formation (OF)",
   bc: "Bilans de compétences (CBC)",
   vae: "VAE (Validation des Acquis de l'Expérience)",
@@ -104,7 +100,6 @@ const TYPE_LABELS: TypeLabels = {
 
 function buildTerminologieBlocks(typesActions: string[]): string {
   const blocks: string[] = [];
-
   if (typesActions.includes("bc")) {
     blocks.push(`**TERMINOLOGIE BILANS DE COMPÉTENCES** :
 - Personne : "bénéficiaire" (JAMAIS "apprenant" ou "stagiaire")
@@ -142,7 +137,6 @@ function buildTerminologieBlocks(typesActions: string[]): string {
 - Contrat : "convention de formation" ou "contrat de formation professionnelle"
 - Référent handicap : recommandé mais non obligatoire (sauf CFA)`);
   }
-
   return blocks.length > 0
     ? `\n\n## TERMINOLOGIE PAR TYPE D'ACTION\n\n${blocks.join("\n\n")}`
     : "";
@@ -162,7 +156,9 @@ function buildAgentSystemPrompt(
 
   const terminologie = buildTerminologieBlocks(typesActions);
 
-  return `Tu es un consultant expert Qualiopi RNQ v9 (janvier 2024), spécialisé dans l'accompagnement des organismes de formation pour les audits. Tu travailles sur le **${critereTitle}**.${typeContext}${terminologie}
+  return `Tu es Qual'IA, un consultant expert Qualiopi RNQ v9 (janvier 2024), spécialisé dans l'accompagnement des organismes de formation pour les audits. Tu travailles sur le **${critereTitle}**.${typeContext}${terminologie}
+
+IMPORTANT : Tu es Qual'IA, l'assistant IA de Groupe Averreo. Ne te présente JAMAIS comme Claude, ChatGPT, ou un autre modèle IA. Tu es Qual'IA.
 
 ${QUALIOPI_KNOWLEDGE}
 
@@ -216,66 +212,6 @@ clé=valeur
 \`\`\``;
 }
 
-function buildGenerateSystemPrompt(typesActions: string[]): string {
-  const typeDesc =
-    typesActions.length > 0
-      ? `L'organisme est certifié pour : ${typesActions
-          .map((t) => TYPE_LABELS[t] || t)
-          .join(", ")}.`
-      : "L'organisme est un organisme de formation.";
-
-  const terminologie = buildTerminologieBlocks(typesActions);
-
-  const hasCfa = typesActions.includes("cfa");
-  const nonApplicableNote =
-    typesActions.length > 0 && !hasCfa
-      ? `\n\n## INDICATEURS NON APPLICABLES\nLes indicateurs 13, 14, 15, 20, 29 sont SPÉCIFIQUES CFA et ne s'appliquent PAS à cet organisme.`
-      : "";
-
-  return `Tu es un consultant expert Qualiopi RNQ v9 (janvier 2024) spécialisé dans l'accompagnement des organismes de formation français.
-
-**CONTEXTE ORGANISME** : ${typeDesc}${terminologie}${nonApplicableNote}
-
-${QUALIOPI_KNOWLEDGE}
-
-## TA MISSION
-
-Produire un document **prêt pour l'audit** : l'auditeur doit pouvoir le prendre tel quel comme preuve de conformité.
-
-## FORMAT OBLIGATOIRE
-
-### En-tête
-\`V1 / [date du jour] / TITRE DU DOCUMENT EN MAJUSCULES\`
-\`[Nom de l'organisme] — NDA : [NDA] — SIRET : [SIRET]\`
-
-### Corps
-Structuré en **Articles numérotés** avec :
-- Références légales EXACTES
-- Données concrètes de l'organisme
-- Procédures opérationnelles pas-à-pas
-- Tableaux remplis avec les données réelles
-
-### Pied de document
-\`\`\`
-Rédigé par : [responsable]
-Date de mise en application : [date]
-Prochaine révision : [date + 1 an]
-Signature : ________________________
-\`\`\`
-
-## RÈGLES ABSOLUES
-
-1. **NE JAMAIS INVENTER DE DONNÉES FACTUELLES**. Utilise UNIQUEMENT ce qui est fourni.
-2. Si une donnée manque → **"[À COMPLÉTER : description]"**
-3. **1000-2000 MOTS** minimum. Document complet et autosuffisant.
-4. **Français professionnel** : vocabulaire Qualiopi.
-5. **EXCEPTION UAI** : "En cours d'attribution auprès du Rectorat"
-6. **EXCEPTION NDA** : "En cours d'enregistrement auprès de la DREETS"
-
-## FORMAT MARKDOWN
-\`#\` titre | \`##\` articles | \`###\` sous-sections | \`|\` tableaux | \`-\` listes | \`**gras**\` important`;
-}
-
 // ── Auth helper ──
 
 function getAuthUser(req: Request) {
@@ -288,13 +224,60 @@ async function getUserId(token: string): Promise<string | null> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser(token);
+  const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return null;
   return user.id;
+}
+
+// ── Anthropic SSE → OpenAI-compatible SSE transformer ──
+
+function anthropicToOpenAIStream(anthropicBody: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  const reader = anthropicBody.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+
+  return new ReadableStream({
+    async pull(controller) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+          return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIdx: number;
+        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, newlineIdx).trim();
+          buffer = buffer.slice(newlineIdx + 1);
+
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6);
+          try {
+            const evt = JSON.parse(jsonStr);
+            if (evt.type === "content_block_delta" && evt.delta?.text) {
+              const openAIChunk = {
+                choices: [{ delta: { content: evt.delta.text } }],
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
+            } else if (evt.type === "message_stop") {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+              reader.cancel();
+              return;
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    },
+    cancel() {
+      reader.cancel();
+    },
+  });
 }
 
 // ── Main handler ──
@@ -322,14 +305,7 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const {
-      critereId,
-      critereTitle,
-      messages,
-      cfaInfo,
-      formations,
-      organisation,
-    } = body;
+    const { critereId, critereTitle, messages, cfaInfo, formations, organisation } = body;
 
     if (!critereId || !critereTitle) {
       return new Response(
@@ -347,15 +323,11 @@ serve(async (req) => {
       if (cfaInfo.nda) contextPreamble += `- NDA : ${cfaInfo.nda}\n`;
       if (cfaInfo.uai) contextPreamble += `- UAI : ${cfaInfo.uai}\n`;
       if (!cfaInfo.uai) contextPreamble += `- UAI : NON ATTRIBUÉ\n`;
-      if (cfaInfo.responsable)
-        contextPreamble += `- Responsable : ${cfaInfo.responsable}\n`;
-      if (cfaInfo.adresse)
-        contextPreamble += `- Adresse : ${cfaInfo.adresse} ${cfaInfo.codePostal || ""} ${cfaInfo.ville || ""}\n`;
+      if (cfaInfo.responsable) contextPreamble += `- Responsable : ${cfaInfo.responsable}\n`;
+      if (cfaInfo.adresse) contextPreamble += `- Adresse : ${cfaInfo.adresse} ${cfaInfo.codePostal || ""} ${cfaInfo.ville || ""}\n`;
       if (cfaInfo.email) contextPreamble += `- Email : ${cfaInfo.email}\n`;
-      if (cfaInfo.telephone)
-        contextPreamble += `- Téléphone : ${cfaInfo.telephone}\n`;
-      if (cfaInfo.siteWeb)
-        contextPreamble += `- Site web : ${cfaInfo.siteWeb}\n`;
+      if (cfaInfo.telephone) contextPreamble += `- Téléphone : ${cfaInfo.telephone}\n`;
+      if (cfaInfo.siteWeb) contextPreamble += `- Site web : ${cfaInfo.siteWeb}\n`;
     }
 
     if (formations?.length > 0) {
@@ -367,14 +339,10 @@ serve(async (req) => {
 
     if (organisation) {
       contextPreamble += `\n[ORGANISATION]\n`;
-      if (organisation.referentHandicap)
-        contextPreamble += `- Référent handicap : ${organisation.referentHandicap} (${organisation.referentHandicapEmail || ""})\n`;
-      if (organisation.effectifFormateurs)
-        contextPreamble += `- Formateurs : ${organisation.effectifFormateurs}\n`;
-      if (organisation.plateformeLMS)
-        contextPreamble += `- LMS : ${organisation.plateformeLMS}\n`;
-      if (organisation.locaux)
-        contextPreamble += `- Locaux : ${organisation.locaux}\n`;
+      if (organisation.referentHandicap) contextPreamble += `- Référent handicap : ${organisation.referentHandicap} (${organisation.referentHandicapEmail || ""})\n`;
+      if (organisation.effectifFormateurs) contextPreamble += `- Formateurs : ${organisation.effectifFormateurs}\n`;
+      if (organisation.plateformeLMS) contextPreamble += `- LMS : ${organisation.plateformeLMS}\n`;
+      if (organisation.locaux) contextPreamble += `- Locaux : ${organisation.locaux}\n`;
     }
 
     // Fetch relevant templates for this critère
@@ -389,15 +357,13 @@ serve(async (req) => {
       const { data: templates } = await supabase
         .from("templates")
         .select("name, content_markdown")
-        .or(`critere.eq.${critereNum},category.eq.critere_cfa`)
         .eq("critere", critereNum)
         .limit(15);
-      
+
       if (templates && templates.length > 0) {
         templateContext = `\n\n[TEMPLATES DISPONIBLES POUR CE CRITÈRE]\nTu disposes de templates pré-rédigés. Quand tu génères un document, base-toi sur ces templates et personnalise-les avec les données de l'organisme.\n\n`;
         for (const t of templates) {
-          // Truncate to avoid token overflow
-          const content = t.content_markdown.length > 3000 
+          const content = t.content_markdown.length > 3000
             ? t.content_markdown.slice(0, 3000) + "\n[... suite tronquée]"
             : t.content_markdown;
           templateContext += `### ${t.name}\n${content}\n\n---\n\n`;
@@ -405,13 +371,9 @@ serve(async (req) => {
       }
     }
 
-    // Build messages for AI
+    // Build messages for Anthropic
     const typesActions: string[] = cfaInfo?.typesActions || [];
-    const systemPrompt = buildAgentSystemPrompt(
-      critereId,
-      critereTitle,
-      typesActions
-    );
+    const systemPrompt = buildAgentSystemPrompt(critereId, critereTitle, typesActions);
 
     const typeLabel = typesActions.includes("bc")
       ? "cabinet de bilan"
@@ -423,8 +385,6 @@ serve(async (req) => {
 
     const aiMessages: { role: string; content: string }[] = [];
     const history = messages || [];
-
-    // Include template context in first message
     const fullContext = contextPreamble + templateContext;
 
     if (history.length === 0) {
@@ -436,70 +396,57 @@ serve(async (req) => {
       const firstMsg = history[0];
       aiMessages.push({
         role: firstMsg.role,
-        content:
-          firstMsg.role === "user"
-            ? firstMsg.content + fullContext
-            : firstMsg.content,
+        content: firstMsg.role === "user" ? firstMsg.content + fullContext : firstMsg.content,
       });
       for (let i = 1; i < history.length; i++) {
-        aiMessages.push({
-          role: history[i].role,
-          content: history[i].content,
-        });
+        aiMessages.push({ role: history[i].role, content: history[i].content });
       }
     }
 
-    // Call Lovable AI Gateway
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    // Call Anthropic API with Claude Sonnet
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
+        JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const aiResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...aiMessages,
-          ],
-          stream: true,
-        }),
-      }
-    );
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages: aiMessages,
+        stream: true,
+      }),
+    });
 
     if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error("Anthropic error:", aiResponse.status, errorText);
       if (aiResponse.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Limite de requêtes atteinte, réessayez dans quelques instants." }),
+          JSON.stringify({ error: "Limite de requêtes Anthropic atteinte." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Crédits IA épuisés. Veuillez recharger votre compte." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errorText);
       return new Response(
-        JSON.stringify({ error: "Erreur du service IA" }),
+        JSON.stringify({ error: `Erreur Anthropic: ${aiResponse.status}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Stream the response back
-    return new Response(aiResponse.body, {
+    // Convert Anthropic SSE to OpenAI-compatible SSE for the frontend
+    const openAIStream = anthropicToOpenAIStream(aiResponse.body!);
+
+    return new Response(openAIStream, {
       headers: {
         ...corsHeaders,
         "Content-Type": "text/event-stream",
@@ -509,13 +456,8 @@ serve(async (req) => {
   } catch (e) {
     console.error("chat error:", e);
     return new Response(
-      JSON.stringify({
-        error: e instanceof Error ? e.message : "Erreur inconnue",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ error: e instanceof Error ? e.message : "Erreur inconnue" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

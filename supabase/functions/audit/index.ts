@@ -11,10 +11,7 @@ async function getUserId(req: Request): Promise<string | null> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return null;
   const token = authHeader.replace("Bearer ", "");
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return null;
   return user.id;
@@ -44,7 +41,6 @@ serve(async (req) => {
       );
     }
 
-    // Build audit prompt
     const docsText = Object.entries(documents as Record<string, any>)
       .filter(([, doc]: [string, any]) => doc.status === "generated" && doc.content)
       .map(([id, doc]: [string, any]) => `### ${id}\n${(doc.content as string).slice(0, 2000)}`)
@@ -94,60 +90,50 @@ Produis un rapport JSON avec cette structure exacte :
 
 Réponds UNIQUEMENT avec le JSON, sans markdown ni backticks.`;
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
+        JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const aiResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Tu es un auditeur Qualiopi certifié. Réponds uniquement en JSON valide." },
-            { role: "user", content: auditPrompt },
-          ],
-        }),
-      }
-    );
+    // Call Anthropic API with Claude Opus for audit (most powerful model)
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-opus-4-20250514",
+        max_tokens: 8192,
+        system: "Tu es un auditeur Qualiopi certifié COFRAC, expert RNQ v9. Tu es Qual'IA, l'assistant de Groupe Averreo. Réponds uniquement en JSON valide.",
+        messages: [{ role: "user", content: auditPrompt }],
+      }),
+    });
 
     if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error("Anthropic error:", aiResponse.status, errorText);
       if (aiResponse.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Limite de requêtes atteinte." }),
+          JSON.stringify({ error: "Limite de requêtes Anthropic atteinte." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Crédits IA épuisés." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await aiResponse.text();
-      console.error("AI error:", aiResponse.status, errorText);
       return new Response(
-        JSON.stringify({ error: "Erreur du service IA" }),
+        JSON.stringify({ error: `Erreur Anthropic: ${aiResponse.status}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "";
+    const content = aiData.content?.[0]?.text || "";
 
-    // Try to parse JSON from the response
     let auditResult;
     try {
-      // Remove potential markdown wrapping
       const cleanJson = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       auditResult = JSON.parse(cleanJson);
     } catch {
