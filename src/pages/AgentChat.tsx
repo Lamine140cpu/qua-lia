@@ -320,8 +320,29 @@ export default function AgentChat() {
           const line = buffer.slice(0, newlineIndex).trim();
           buffer = buffer.slice(newlineIndex + 1);
 
+          // Skip SSE comments (e.g. ": OPENROUTER PROCESSING")
+          if (line.startsWith(':') || line.trim() === '') continue;
           if (!line.startsWith('data: ')) continue;
-          const jsonStr = line.slice(6);
+          const jsonStr = line.slice(6).trim();
+
+          // Handle stream termination signal
+          if (jsonStr === '[DONE]') {
+            const docs = extractDocuments(fullContent);
+            for (const doc of docs) {
+              addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
+              setDocStatus(doc.indicateurId, 'generated', {
+                content: doc.docContent,
+                generatedAt: new Date().toISOString(),
+              });
+            }
+            if (docs.length > 0) {
+              toast({ title: `${docs.length} document(s) généré(s)` });
+            }
+            extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
+            setStreaming(critereId, false);
+            abortRef.current = null;
+            return;
+          }
 
           try {
             const parsed = JSON.parse(jsonStr);
@@ -330,28 +351,6 @@ export default function AgentChat() {
             if (content) {
               fullContent += content;
               appendToLastAssistant(critereId, content);
-            }
-            // Legacy format
-            if (parsed.type === 'delta' && parsed.text) {
-              fullContent += parsed.text;
-              appendToLastAssistant(critereId, parsed.text);
-            } else if (parsed.type === 'done') {
-              const docs = extractDocuments(fullContent);
-              for (const doc of docs) {
-                addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
-                setDocStatus(doc.indicateurId, 'generated', {
-                  content: doc.docContent,
-                  generatedAt: new Date().toISOString(),
-                });
-              }
-              if (docs.length > 0) {
-                toast({ title: `${docs.length} document(s) généré(s)` });
-              }
-              extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
-              setStreaming(critereId, false);
-              return;
-            } else if (parsed.type === 'error') {
-              throw new Error(parsed.message || 'Erreur de génération');
             }
           } catch (e: any) {
             if (e.message && !e.message.includes('JSON')) throw e;
