@@ -403,15 +403,38 @@ export default function AgentChat() {
   };
 
   const handleDownloadDoc = async (indicateurId: string, content: string, format: 'docx' | 'xlsx' = 'docx') => {
-    // Client-side download as markdown text file (DOCX export requires dedicated Edge Function)
-    const filename = `${indicateurId}_${cfaInfo.nom || 'organisme'}`;
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${filename}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      toast({ title: 'Export en cours…' });
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(EDGE_FN.exportDocx, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: 'single',
+          markdown: content,
+          filename: `${indicateurId}_${cfaInfo.nom || 'organisme'}`,
+          cfaInfo,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Erreur export' }));
+        throw new Error(err.error || `Erreur ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${indicateurId}_${cfaInfo.nom || 'organisme'}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: 'Document DOCX téléchargé !' });
+    } catch (e: any) {
+      toast({ title: 'Erreur export', description: e.message, variant: 'destructive' });
+    }
   };
 
   if (!critereId || !critere) {
