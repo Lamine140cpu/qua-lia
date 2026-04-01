@@ -169,9 +169,9 @@ function DocumentPreview({ doc }: { doc: { indicateurId: string; titre: string; 
 }
 
 /** Typing indicator — 3 pulsing dots like Claude */
-function TypingIndicator() {
+const TypingIndicator = forwardRef<HTMLDivElement>(function TypingIndicator(_props, ref) {
   return (
-    <div className="flex items-center gap-1.5 py-1">
+    <div ref={ref} className="flex items-center gap-1.5 py-1">
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
@@ -187,7 +187,7 @@ function TypingIndicator() {
       ))}
     </div>
   );
-}
+});
 
 export default function AgentChat() {
   const { critereId } = useParams<{ critereId: string }>();
@@ -251,6 +251,18 @@ export default function AgentChat() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [critereId]);
+
+  // Safety net: if persisted state says streaming but no active request, unlock input
+  useEffect(() => {
+    if (!critereId || !conversation?.streaming) return;
+    const timer = setTimeout(() => {
+      if (conversation.streaming && !abortRef.current) {
+        console.log('[AgentChat] Clearing stale streaming lock', critereId);
+        setStreaming(critereId, false);
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [critereId, conversation?.streaming, setStreaming]);
 
   // Auto-resize textarea
   useEffect(() => {
