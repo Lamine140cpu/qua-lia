@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { sanitizeHtml } from '@/lib/sanitize';
-import { API_BASE } from '@/lib/constants';
+import { EDGE_FN } from '@/lib/constants';
+import { supabase } from '@/integrations/supabase/client';
 import { marked } from 'marked';
 
 /** Extract [DOCUMENT:id:title]...[/DOCUMENT] blocks from assistant messages */
@@ -254,9 +255,14 @@ export default function AgentChat() {
     abortRef.current = controller;
 
     try {
-      const resp = await fetch(`${API_BASE}/api/agent/chat`, {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(EDGE_FN.chat, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({
           critereId,
           critereTitle: `Critère ${critereId.replace('critere', '')} — ${critere.titre}`,
@@ -296,6 +302,13 @@ export default function AgentChat() {
 
           try {
             const parsed = JSON.parse(jsonStr);
+            // OpenAI-compatible format from Lovable AI
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullContent += content;
+              appendToLastAssistant(critereId, content);
+            }
+            // Legacy format
             if (parsed.type === 'delta' && parsed.text) {
               fullContent += parsed.text;
               appendToLastAssistant(critereId, parsed.text);
@@ -368,33 +381,15 @@ export default function AgentChat() {
   };
 
   const handleDownloadDoc = async (indicateurId: string, content: string, format: 'docx' | 'xlsx' = 'docx') => {
-    const filename = `${indicateurId}_${cfaInfo.nom || 'CFA'}`;
-    const endpoint = format === 'xlsx' ? '/api/export-xlsx' : '/api/export-docx';
-    const mimeType = format === 'xlsx'
-      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    try {
-      const resp = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: content, filename }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: 'Erreur serveur' }));
-        throw new Error(err.error || `Erreur ${resp.status}`);
-      }
-      const arrayBuf = await resp.arrayBuffer();
-      if (arrayBuf.byteLength === 0) throw new Error('Fichier vide reçu');
-      const blob = new Blob([arrayBuf], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${filename}.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      toast({ title: `Erreur export ${format.toUpperCase()}`, description: e.message || 'Serveur injoignable', variant: 'destructive' });
-    }
+    // Client-side download as markdown text file (DOCX export requires dedicated Edge Function)
+    const filename = `${indicateurId}_${cfaInfo.nom || 'organisme'}`;
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!critereId || !critere) {

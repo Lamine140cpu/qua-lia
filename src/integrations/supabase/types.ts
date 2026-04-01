@@ -14,7 +14,169 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      conversations: {
+        Row: {
+          created_at: string
+          critere_id: string
+          generated_docs: Json
+          id: string
+          messages: Json
+          phase: string
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          critere_id: string
+          generated_docs?: Json
+          id?: string
+          messages?: Json
+          phase?: string
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          critere_id?: string
+          generated_docs?: Json
+          id?: string
+          messages?: Json
+          phase?: string
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          content: string | null
+          created_at: string
+          current_version: number
+          error: string | null
+          generated_at: string | null
+          id: string
+          improved_from: string | null
+          indicateur_id: string
+          project_id: string
+          stale: boolean
+          status: string
+          updated_at: string
+          user_id: string
+          versions: Json
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          current_version?: number
+          error?: string | null
+          generated_at?: string | null
+          id?: string
+          improved_from?: string | null
+          indicateur_id: string
+          project_id: string
+          stale?: boolean
+          status?: string
+          updated_at?: string
+          user_id: string
+          versions?: Json
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          current_version?: number
+          error?: string | null
+          generated_at?: string | null
+          id?: string
+          improved_from?: string | null
+          indicateur_id?: string
+          project_id?: string
+          stale?: boolean
+          status?: string
+          updated_at?: string
+          user_id?: string
+          versions?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          cfa_info: Json
+          created_at: string
+          formations: Json
+          id: string
+          name: string
+          organisation: Json
+          selected_indicateurs: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cfa_info?: Json
+          created_at?: string
+          formations?: Json
+          id?: string
+          name?: string
+          organisation?: Json
+          selected_indicateurs?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cfa_info?: Json
+          created_at?: string
+          formations?: Json
+          id?: string
+          name?: string
+          organisation?: Json
+          selected_indicateurs?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
