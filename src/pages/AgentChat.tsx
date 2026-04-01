@@ -374,33 +374,15 @@ export default function AgentChat() {
   };
 
   const handleDownloadDoc = async (indicateurId: string, content: string, format: 'docx' | 'xlsx' = 'docx') => {
-    const filename = `${indicateurId}_${cfaInfo.nom || 'CFA'}`;
-    const endpoint = format === 'xlsx' ? '/api/export-xlsx' : '/api/export-docx';
-    const mimeType = format === 'xlsx'
-      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    try {
-      const resp = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: content, filename }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: 'Erreur serveur' }));
-        throw new Error(err.error || `Erreur ${resp.status}`);
-      }
-      const arrayBuf = await resp.arrayBuffer();
-      if (arrayBuf.byteLength === 0) throw new Error('Fichier vide reçu');
-      const blob = new Blob([arrayBuf], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${filename}.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      toast({ title: `Erreur export ${format.toUpperCase()}`, description: e.message || 'Serveur injoignable', variant: 'destructive' });
-    }
+    // Client-side download as markdown text file (DOCX export requires dedicated Edge Function)
+    const filename = `${indicateurId}_${cfaInfo.nom || 'organisme'}`;
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!critereId || !critere) {
