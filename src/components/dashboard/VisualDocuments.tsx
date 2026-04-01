@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Loader2, Download, Eye, FileText } from 'lucide-react';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { sanitizeHtml } from '@/lib/sanitize';
-import { API_BASE } from '@/lib/constants';
+import { EDGE_FN } from '@/lib/constants';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface VisualDocumentsProps {
