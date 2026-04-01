@@ -222,12 +222,22 @@ export default function AgentChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
 
+  // Fix stuck streaming state from persisted store (e.g. user closed tab during streaming)
+  useEffect(() => {
+    if (critereId && conversation?.streaming) {
+      // If streaming is true but there's no active abort controller, it's stuck
+      if (!abortRef.current) {
+        setStreaming(critereId, false);
+      }
+    }
+  }, [critereId, conversation?.streaming, setStreaming]);
+
   useEffect(() => {
     if (critereId && critere && conversation && conversation.messages.length === 0 && !conversation.streaming) {
       sendToAgent([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [critereId]);
+  }, [critereId, conversation?.streaming]);
 
   // Auto-resize textarea
   useEffect(() => {
