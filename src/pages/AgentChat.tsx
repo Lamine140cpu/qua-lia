@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { sanitizeHtml } from '@/lib/sanitize';
-import { API_BASE } from '@/lib/constants';
+import { EDGE_FN } from '@/lib/constants';
+import { supabase } from '@/integrations/supabase/client';
 import { marked } from 'marked';
 
 /** Extract [DOCUMENT:id:title]...[/DOCUMENT] blocks from assistant messages */
