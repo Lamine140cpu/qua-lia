@@ -222,7 +222,7 @@ export default function AgentChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
 
-  // (mount effect moved after sendToAgent declaration)
+  
 
   // Safety net: if persisted state says streaming but no active request, unlock input
   useEffect(() => {
