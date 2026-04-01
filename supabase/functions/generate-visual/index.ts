@@ -136,10 +136,10 @@ Réponds UNIQUEMENT avec le prompt en anglais, rien d'autre.`,
       });
     }
 
-    // ── Mode HTML: Claude Sonnet generates styled HTML ──
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // ── Mode HTML: Lovable AI Gateway generates styled HTML ──
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const systemPrompt = `Tu es Qual'IA, expert Qualiopi RNQ v9. Tu génères des documents HTML professionnels et visuellement soignés.
@@ -154,29 +154,32 @@ IMPORTANT : Tu es Qual'IA, l'assistant de Groupe Averreo.
 5. Donnée manquante → "[À COMPLÉTER]"
 6. Le HTML doit être autonome et prêt pour PDF`;
 
-    const contentResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    const contentResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: [{ role: "user", content: `${prompt}\n\nDonnées :\n${contextData}\n\nGénère uniquement le HTML (pas de balises html/head/body). Styles inline professionnels.` }],
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `${prompt}\n\nDonnées :\n${contextData}\n\nGénère uniquement le HTML (pas de balises html/head/body). Styles inline professionnels.` },
+        ],
       }),
     });
 
     if (!contentResponse.ok) {
       const errorText = await contentResponse.text();
-      console.error("Anthropic error:", contentResponse.status, errorText);
-      return new Response(JSON.stringify({ error: `Erreur Anthropic: ${contentResponse.status}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error("Lovable AI error:", contentResponse.status, errorText);
+      if (contentResponse.status === 429) {
+        return new Response(JSON.stringify({ error: "Limite de requêtes atteinte, réessayez." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ error: `Erreur IA: ${contentResponse.status}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const contentData = await contentResponse.json();
-    let html = contentData.content?.[0]?.text || "";
+    let html = contentData.choices?.[0]?.message?.content || "";
     html = html.replace(/```html\n?/g, "").replace(/```\n?/g, "").trim();
 
     return new Response(JSON.stringify({ html }), {

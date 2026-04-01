@@ -222,27 +222,35 @@ export default function AgentChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
 
-  // Fix stuck streaming state from persisted store (e.g. user closed tab during streaming)
+  // Consolidated mount effect: fix stuck state + auto-send (eliminates race condition)
+  const sentRef = useRef(false);
   useEffect(() => {
-    if (critereId && conversation) {
-      const isStuck = conversation.streaming && !abortRef.current;
-      const hasOnlyEmptyMessages = conversation.messages.length > 0 && 
-        conversation.messages.every(m => m.role === 'assistant' && !m.content);
-      
-      if (isStuck || hasOnlyEmptyMessages) {
-        // Reset the conversation entirely and restart
-        resetConversation(critereId);
+    if (!critereId || !critere) return;
+    sentRef.current = false; // reset on critere change
+
+    const conv = useChatStore.getState().getConversation(critereId);
+    const isStuck = conv.streaming && !abortRef.current;
+    const hasOnlyEmptyMessages = conv.messages.length > 0 && 
+      conv.messages.every(m => m.role === 'assistant' && !m.content);
+
+    if (isStuck || hasOnlyEmptyMessages) {
+      console.log('[AgentChat] Stuck state detected, resetting', critereId);
+      resetConversation(critereId);
+      // After reset, auto-send on next tick
+      setTimeout(() => {
+        if (!sentRef.current) {
+          sentRef.current = true;
+          sendToAgent([]);
+        }
+      }, 50);
+    } else if (conv.messages.length === 0 && !conv.streaming) {
+      if (!sentRef.current) {
+        sentRef.current = true;
+        sendToAgent([]);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [critereId]);
-
-  useEffect(() => {
-    if (critereId && critere && conversation && conversation.messages.length === 0 && !conversation.streaming) {
-      sendToAgent([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [critereId, conversation?.messages.length, conversation?.streaming]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -312,8 +320,29 @@ export default function AgentChat() {
           const line = buffer.slice(0, newlineIndex).trim();
           buffer = buffer.slice(newlineIndex + 1);
 
+          // Skip SSE comments (e.g. ": OPENROUTER PROCESSING")
+          if (line.startsWith(':') || line.trim() === '') continue;
           if (!line.startsWith('data: ')) continue;
-          const jsonStr = line.slice(6);
+          const jsonStr = line.slice(6).trim();
+
+          // Handle stream termination signal
+          if (jsonStr === '[DONE]') {
+            const docs = extractDocuments(fullContent);
+            for (const doc of docs) {
+              addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
+              setDocStatus(doc.indicateurId, 'generated', {
+                content: doc.docContent,
+                generatedAt: new Date().toISOString(),
+              });
+            }
+            if (docs.length > 0) {
+              toast({ title: `${docs.length} document(s) généré(s)` });
+            }
+            extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
+            setStreaming(critereId, false);
+            abortRef.current = null;
+            return;
+          }
 
           try {
             const parsed = JSON.parse(jsonStr);
@@ -323,34 +352,13 @@ export default function AgentChat() {
               fullContent += content;
               appendToLastAssistant(critereId, content);
             }
-            // Legacy format
-            if (parsed.type === 'delta' && parsed.text) {
-              fullContent += parsed.text;
-              appendToLastAssistant(critereId, parsed.text);
-            } else if (parsed.type === 'done') {
-              const docs = extractDocuments(fullContent);
-              for (const doc of docs) {
-                addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
-                setDocStatus(doc.indicateurId, 'generated', {
-                  content: doc.docContent,
-                  generatedAt: new Date().toISOString(),
-                });
-              }
-              if (docs.length > 0) {
-                toast({ title: `${docs.length} document(s) généré(s)` });
-              }
-              extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
-              setStreaming(critereId, false);
-              return;
-            } else if (parsed.type === 'error') {
-              throw new Error(parsed.message || 'Erreur de génération');
-            }
           } catch (e: any) {
             if (e.message && !e.message.includes('JSON')) throw e;
           }
         }
       }
 
+      // Fallback: process docs if stream ended without [DONE]
       const docs = extractDocuments(fullContent);
       for (const doc of docs) {
         addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
@@ -359,8 +367,12 @@ export default function AgentChat() {
           generatedAt: new Date().toISOString(),
         });
       }
+      if (docs.length > 0) {
+        toast({ title: `${docs.length} document(s) généré(s)` });
+      }
       extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
       setStreaming(critereId, false);
+      abortRef.current = null;
     } catch (e: any) {
       if (e.name === 'AbortError') {
         setStreaming(critereId, false);
@@ -396,15 +408,38 @@ export default function AgentChat() {
   };
 
   const handleDownloadDoc = async (indicateurId: string, content: string, format: 'docx' | 'xlsx' = 'docx') => {
-    // Client-side download as markdown text file (DOCX export requires dedicated Edge Function)
-    const filename = `${indicateurId}_${cfaInfo.nom || 'organisme'}`;
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${filename}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      toast({ title: 'Export en cours…' });
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(EDGE_FN.exportDocx, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: 'single',
+          markdown: content,
+          filename: `${indicateurId}_${cfaInfo.nom || 'organisme'}`,
+          cfaInfo,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Erreur export' }));
+        throw new Error(err.error || `Erreur ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${indicateurId}_${cfaInfo.nom || 'organisme'}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: 'Document DOCX téléchargé !' });
+    } catch (e: any) {
+      toast({ title: 'Erreur export', description: e.message, variant: 'destructive' });
+    }
   };
 
   if (!critereId || !critere) {
