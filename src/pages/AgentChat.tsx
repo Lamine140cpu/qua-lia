@@ -222,12 +222,27 @@ export default function AgentChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
 
+  // Fix stuck streaming state from persisted store (e.g. user closed tab during streaming)
+  useEffect(() => {
+    if (critereId && conversation) {
+      const isStuck = conversation.streaming && !abortRef.current;
+      const hasOnlyEmptyMessages = conversation.messages.length > 0 && 
+        conversation.messages.every(m => m.role === 'assistant' && !m.content);
+      
+      if (isStuck || hasOnlyEmptyMessages) {
+        // Reset the conversation entirely and restart
+        resetConversation(critereId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [critereId]);
+
   useEffect(() => {
     if (critereId && critere && conversation && conversation.messages.length === 0 && !conversation.streaming) {
       sendToAgent([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [critereId]);
+  }, [critereId, conversation?.messages.length, conversation?.streaming]);
 
   // Auto-resize textarea
   useEffect(() => {
