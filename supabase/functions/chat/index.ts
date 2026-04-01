@@ -220,13 +220,29 @@ function getAuthUser(req: Request) {
   return authHeader.replace("Bearer ", "");
 }
 
-async function getUserId(token: string): Promise<string | null> {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+async function getUserId(token: string): Promise<{ userId: string | null; authConfigMissing: boolean }> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const supabaseKey = serviceRoleKey || anonKey;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.error("[chat] Missing backend auth env", {
+      hasSupabaseUrl: Boolean(supabaseUrl),
+      hasServiceRoleKey: Boolean(serviceRoleKey),
+      hasAnonKey: Boolean(anonKey),
+    });
+    return { userId: null, authConfigMissing: true };
+  }
+
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return null;
-  return user.id;
+  if (error || !user) {
+    console.warn("[chat] Token validation failed", { error: error?.message || "unknown" });
+    return { userId: null, authConfigMissing: false };
+  }
+
+  return { userId: user.id, authConfigMissing: false };
 }
 
 // ── Anthropic SSE → OpenAI-compatible SSE transformer ──
@@ -288,16 +304,27 @@ serve(async (req) => {
   }
 
   try {
+    const requestId = crypto.randomUUID();
     const token = getAuthUser(req);
     if (!token) {
+      console.warn(`[chat][${requestId}] Missing auth token`);
       return new Response(
         JSON.stringify({ error: "Non authentifié" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const userId = await getUserId(token);
+    const { userId, authConfigMissing } = await getUserId(token);
+    if (authConfigMissing) {
+      console.error(`[chat][${requestId}] Auth configuration missing`);
+      return new Response(
+        JSON.stringify({ error: "Configuration d'authentification backend manquante" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!userId) {
+      console.warn(`[chat][${requestId}] Invalid token`);
       return new Response(
         JSON.stringify({ error: "Token invalide" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
