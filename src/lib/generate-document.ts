@@ -1,5 +1,6 @@
 import { type CfaInfo, type Formation, type Organisation } from '@/stores/wizard-store';
-import { API_BASE } from '@/lib/constants';
+import { EDGE_FN } from '@/lib/constants';
+import { supabase } from '@/integrations/supabase/client';
 
 interface GenerateParams {
   indicateurId: string;
@@ -9,6 +10,18 @@ interface GenerateParams {
   previousDocuments?: Record<string, string>;
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  };
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`;
+  }
+  return headers;
+}
+
 export async function generateDocument(
   params: GenerateParams,
   onDelta: (text: string) => void,
@@ -16,12 +29,10 @@ export async function generateDocument(
   onError: (err: string) => void,
   signal?: AbortSignal,
 ) {
-  const url = `${API_BASE}/api/generate-document`;
-
   try {
-    const resp = await fetch(url, {
+    const resp = await fetch(EDGE_FN.generateDocument, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify(params),
       signal,
     });
@@ -49,15 +60,28 @@ export async function generateDocument(
 
       let newlineIndex: number;
       while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, newlineIndex).trim();
+        let line = buffer.slice(0, newlineIndex).trim();
         buffer = buffer.slice(newlineIndex + 1);
 
+        if (line.startsWith(':') || line === '') continue;
         if (!line.startsWith('data: ')) continue;
-        const jsonStr = line.slice(6);
+
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === '[DONE]') {
+          onDone();
+          return;
+        }
 
         try {
           const parsed = JSON.parse(jsonStr);
 
+          // Handle OpenAI-compatible SSE format from Lovable AI
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            onDelta(content);
+          }
+
+          // Handle legacy format
           if (parsed.type === 'delta' && parsed.text) {
             onDelta(parsed.text);
           } else if (parsed.type === 'done') {
@@ -73,7 +97,6 @@ export async function generateDocument(
       }
     }
 
-    // If we reach here without a 'done' event, call onDone anyway
     onDone();
   } catch (e: any) {
     if (e.name === 'AbortError') return;
