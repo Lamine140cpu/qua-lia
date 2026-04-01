@@ -263,16 +263,37 @@ export function validateDocuments(params: {
   };
 }
 
-// ── Export mallette (client-side placeholder — needs DOCX Edge Function later) ──
+// ── Export mallette (DOCX pro via export-docx Edge Function) ──
 
 export async function exportMallette(params: {
   documents: Record<string, any>;
   cfaInfo: any;
 }): Promise<Blob> {
-  const resp = await fetch(EDGE_FN.exportMallette, {
+  const resp = await fetch(EDGE_FN.exportDocx, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify(params),
+    body: JSON.stringify({ action: 'mallette', documents: params.documents, cfaInfo: params.cfaInfo }),
+  });
+
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ error: 'Erreur réseau' }));
+    throw new Error(data.error || `Erreur ${resp.status}`);
+  }
+
+  return resp.blob();
+}
+
+// ── Export single DOCX ──
+
+export async function exportSingleDocx(params: {
+  markdown: string;
+  filename: string;
+  cfaInfo: any;
+}): Promise<Blob> {
+  const resp = await fetch(EDGE_FN.exportDocx, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ action: 'single', ...params }),
   });
 
   if (!resp.ok) {
