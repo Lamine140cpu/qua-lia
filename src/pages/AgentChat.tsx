@@ -18,6 +18,8 @@ import { EDGE_FN } from '@/lib/constants';
 import { supabase } from '@/integrations/supabase/client';
 import { marked } from 'marked';
 
+const SESSION_EXPIRED_MESSAGE = 'Session expirée — veuillez vous reconnecter.';
+
 /** Extract [DOCUMENT:id:title]...[/DOCUMENT] blocks from assistant messages */
 function extractDocuments(content: string): { indicateurId: string; titre: string; docContent: string }[] {
   const regex = /\[DOCUMENT:([^\]:]+):([^\]]+)\]\n([\s\S]*?)\n\[\/DOCUMENT\]/g;
@@ -196,7 +198,7 @@ export default function AgentChat() {
   const { cfaInfo, formations, organisation, setCfaInfo, setOrganisation } = useWizardStore();
   const {
     getConversation, addMessage, appendToLastAssistant,
-    setStreaming, addGeneratedDoc, resetConversation,
+    setStreaming, addGeneratedDoc, removeMessage, resetConversation,
   } = useChatStore();
   const { setDocStatus } = useDashboardStore();
 
@@ -245,33 +247,58 @@ export default function AgentChat() {
     }
   }, [input]);
 
+  const getValidAccessToken = useCallback(
+    async (forceRefresh = false): Promise<string> => {
+      if (forceRefresh) {
+        const { data, error } = await supabase.auth.refreshSession();
+        if (error || !data.session?.access_token) throw new Error(SESSION_EXPIRED_MESSAGE);
+        return data.session.access_token;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) return session.access_token;
+
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error || !data.session?.access_token) throw new Error(SESSION_EXPIRED_MESSAGE);
+      return data.session.access_token;
+    },
+    [],
+  );
+
   const sendToAgent = useCallback(async (history: ChatMessage[]) => {
     if (!critereId || !critere) return;
 
+    const assistantMsgId = crypto.randomUUID();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setStreaming(critereId, true);
 
     const assistantMsg: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: assistantMsgId,
       role: 'assistant',
       content: '',
       timestamp: new Date().toISOString(),
     };
     addMessage(critereId, assistantMsg);
+    let fullContent = '';
+    let hasReceivedDelta = false;
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const persistGeneratedOutput = () => {
+      const docs = extractDocuments(fullContent);
+      for (const doc of docs) {
+        addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
+        setDocStatus(doc.indicateurId, 'generated', {
+          content: doc.docContent,
+          generatedAt: new Date().toISOString(),
+        });
+      }
+      if (docs.length > 0) {
+        toast({ title: `${docs.length} document(s) généré(s)` });
+      }
+      extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
+    };
 
     try {
-      // Get a valid session, refresh if needed
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        const { data: refreshed } = await supabase.auth.refreshSession();
-        session = refreshed.session;
-      }
-      if (!session?.access_token) {
-        throw new Error('Session expirée — veuillez vous reconnecter.');
-      }
-
       const doFetch = async (token: string) => fetch(EDGE_FN.chat, {
         method: 'POST',
         headers: {
@@ -290,17 +317,19 @@ export default function AgentChat() {
         signal: controller.signal,
       });
 
-      let resp = await doFetch(session.access_token);
+      let accessToken = await getValidAccessToken();
+      let resp = await doFetch(accessToken);
 
       // Retry once on 401 after refreshing session
       if (resp.status === 401) {
-        const { data: refreshed } = await supabase.auth.refreshSession();
-        if (refreshed.session?.access_token) {
-          resp = await doFetch(refreshed.session.access_token);
-        }
+        accessToken = await getValidAccessToken(true);
+        resp = await doFetch(accessToken);
       }
 
       if (!resp.ok) {
+        if (resp.status === 401) {
+          throw new Error(SESSION_EXPIRED_MESSAGE);
+        }
         const data = await resp.json().catch(() => ({ error: 'Erreur réseau' }));
         throw new Error(data.error || `Erreur ${resp.status}`);
       }
@@ -310,7 +339,6 @@ export default function AgentChat() {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let fullContent = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -352,6 +380,7 @@ export default function AgentChat() {
             // OpenAI-compatible format from Lovable AI
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
+              hasReceivedDelta = true;
               fullContent += content;
               appendToLastAssistant(critereId, content);
             }
@@ -362,30 +391,32 @@ export default function AgentChat() {
       }
 
       // Fallback: process docs if stream ended without [DONE]
-      const docs = extractDocuments(fullContent);
-      for (const doc of docs) {
-        addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
-        setDocStatus(doc.indicateurId, 'generated', {
-          content: doc.docContent,
-          generatedAt: new Date().toISOString(),
-        });
-      }
-      if (docs.length > 0) {
-        toast({ title: `${docs.length} document(s) généré(s)` });
-      }
-      extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
-      setStreaming(critereId, false);
-      abortRef.current = null;
+      persistGeneratedOutput();
     } catch (e: any) {
-      abortRef.current = null;
       if (e.name === 'AbortError') {
-        setStreaming(critereId, false);
         return;
       }
-      toast({ title: 'Erreur', description: e.message, variant: 'destructive' });
+
+      const message = e instanceof Error ? e.message : 'Erreur inconnue';
+      if (message === SESSION_EXPIRED_MESSAGE) {
+        toast({
+          title: 'Session expirée',
+          description: 'Reconnectez-vous pour continuer le chat.',
+          variant: 'destructive',
+        });
+        navigate('/auth', { replace: true });
+        return;
+      }
+
+      toast({ title: 'Erreur', description: message, variant: 'destructive' });
+    } finally {
+      if (!hasReceivedDelta) {
+        removeMessage(critereId, assistantMsgId);
+      }
       setStreaming(critereId, false);
+      abortRef.current = null;
     }
-  }, [critereId, critere, cfaInfo, formations, organisation, addMessage, appendToLastAssistant, setStreaming, addGeneratedDoc, setDocStatus, setCfaInfo, setOrganisation, toast]);
+  }, [critereId, critere, cfaInfo, formations, organisation, addMessage, appendToLastAssistant, setStreaming, addGeneratedDoc, removeMessage, setDocStatus, setCfaInfo, setOrganisation, toast, navigate, getValidAccessToken]);
 
   // Consolidated mount effect: fix stuck state + auto-send
   const sentRef = useRef(false);
@@ -424,8 +455,7 @@ export default function AgentChat() {
 
   const handleSend = useCallback(() => {
     if (!input.trim() || !critereId || !conversation) return;
-    // Only block if there's actually a request in flight
-    if (conversation.streaming && abortRef.current) return;
+    if (isRequestInFlight) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -439,7 +469,7 @@ export default function AgentChat() {
 
     const newHistory = [...conversation.messages, userMsg];
     sendToAgent(newHistory);
-  }, [input, critereId, conversation, addMessage, sendToAgent]);
+  }, [input, critereId, conversation, isRequestInFlight, addMessage, sendToAgent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -634,7 +664,7 @@ export default function AgentChat() {
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || Boolean(conversation?.streaming && abortRef.current)}
+                disabled={!input.trim() || isRequestInFlight}
                 className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-80 active:scale-95 transition-all"
               >
                 <ArrowUp className="w-4 h-4" strokeWidth={2.5} />

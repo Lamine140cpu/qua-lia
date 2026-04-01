@@ -32,6 +32,7 @@ interface ChatState {
 
   getConversation: (critereId: string) => CritereConversation;
   addMessage: (critereId: string, message: ChatMessage) => void;
+  removeMessage: (critereId: string, messageId: string) => void;
   appendToLastAssistant: (critereId: string, delta: string) => void;
   setPhase: (critereId: string, phase: CriterePhase) => void;
   setStreaming: (critereId: string, streaming: boolean) => void;
@@ -68,6 +69,20 @@ export const useChatStore = create<ChatState>()(
             conversations: {
               ...s.conversations,
               [critereId]: { ...conv, messages: [...conv.messages, message] },
+            },
+          };
+        }),
+
+      removeMessage: (critereId, messageId) =>
+        set((s) => {
+          const conv = s.conversations[critereId] || createEmptyConversation(critereId);
+          return {
+            conversations: {
+              ...s.conversations,
+              [critereId]: {
+                ...conv,
+                messages: conv.messages.filter((m) => m.id !== messageId),
+              },
             },
           };
         }),
