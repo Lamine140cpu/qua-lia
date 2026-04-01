@@ -600,7 +600,6 @@ export default function AgentChat() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Votre message..."
-              disabled={conversation?.streaming}
               className="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 px-4 pt-3.5 pb-12 rounded-2xl focus:outline-none min-h-[52px] max-h-[200px]"
               rows={1}
             />
