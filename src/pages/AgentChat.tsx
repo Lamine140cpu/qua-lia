@@ -358,6 +358,7 @@ export default function AgentChat() {
         }
       }
 
+      // Fallback: process docs if stream ended without [DONE]
       const docs = extractDocuments(fullContent);
       for (const doc of docs) {
         addGeneratedDoc(critereId, doc.indicateurId, doc.docContent);
@@ -366,8 +367,12 @@ export default function AgentChat() {
           generatedAt: new Date().toISOString(),
         });
       }
+      if (docs.length > 0) {
+        toast({ title: `${docs.length} document(s) généré(s)` });
+      }
       extractAndApplyContextUpdates(fullContent, setCfaInfo, setOrganisation);
       setStreaming(critereId, false);
+      abortRef.current = null;
     } catch (e: any) {
       if (e.name === 'AbortError') {
         setStreaming(critereId, false);
