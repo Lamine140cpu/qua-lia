@@ -222,27 +222,35 @@ export default function AgentChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
 
-  // Fix stuck streaming state from persisted store (e.g. user closed tab during streaming)
+  // Consolidated mount effect: fix stuck state + auto-send (eliminates race condition)
+  const sentRef = useRef(false);
   useEffect(() => {
-    if (critereId && conversation) {
-      const isStuck = conversation.streaming && !abortRef.current;
-      const hasOnlyEmptyMessages = conversation.messages.length > 0 && 
-        conversation.messages.every(m => m.role === 'assistant' && !m.content);
-      
-      if (isStuck || hasOnlyEmptyMessages) {
-        // Reset the conversation entirely and restart
-        resetConversation(critereId);
+    if (!critereId || !critere) return;
+    sentRef.current = false; // reset on critere change
+
+    const conv = useChatStore.getState().getConversation(critereId);
+    const isStuck = conv.streaming && !abortRef.current;
+    const hasOnlyEmptyMessages = conv.messages.length > 0 && 
+      conv.messages.every(m => m.role === 'assistant' && !m.content);
+
+    if (isStuck || hasOnlyEmptyMessages) {
+      console.log('[AgentChat] Stuck state detected, resetting', critereId);
+      resetConversation(critereId);
+      // After reset, auto-send on next tick
+      setTimeout(() => {
+        if (!sentRef.current) {
+          sentRef.current = true;
+          sendToAgent([]);
+        }
+      }, 50);
+    } else if (conv.messages.length === 0 && !conv.streaming) {
+      if (!sentRef.current) {
+        sentRef.current = true;
+        sendToAgent([]);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [critereId]);
-
-  useEffect(() => {
-    if (critereId && critere && conversation && conversation.messages.length === 0 && !conversation.streaming) {
-      sendToAgent([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [critereId, conversation?.messages.length, conversation?.streaming]);
 
   // Auto-resize textarea
   useEffect(() => {
