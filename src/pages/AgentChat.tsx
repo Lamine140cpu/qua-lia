@@ -327,16 +327,6 @@ export default function AgentChat() {
           resp = await doFetch(refreshed.session.access_token);
         }
       }
-        body: JSON.stringify({
-          critereId,
-          critereTitle: `Critère ${critereId.replace('critere', '')} — ${critere.titre}`,
-          messages: history.map((m) => ({ role: m.role, content: m.content })),
-          cfaInfo,
-          formations,
-          organisation,
-        }),
-        signal: controller.signal,
-      });
 
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({ error: 'Erreur réseau' }));
