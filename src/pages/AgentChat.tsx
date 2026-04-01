@@ -396,8 +396,12 @@ export default function AgentChat() {
     }
   }, [critereId, critere, cfaInfo, formations, organisation, addMessage, appendToLastAssistant, setStreaming, addGeneratedDoc, setDocStatus, setCfaInfo, setOrganisation, toast]);
 
+  const isRequestInFlight = Boolean(conversation?.streaming && abortRef.current);
+
   const handleSend = useCallback(() => {
-    if (!input.trim() || !critereId || !conversation || conversation.streaming) return;
+    if (!input.trim() || !critereId || !conversation) return;
+    // Only block if there's actually a request in flight
+    if (conversation.streaming && abortRef.current) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
