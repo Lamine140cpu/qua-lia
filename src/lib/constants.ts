@@ -7,6 +7,7 @@ export const EDGE_FN = {
   sync: `${SUPABASE_URL}/functions/v1/sync`,
   audit: `${SUPABASE_URL}/functions/v1/audit`,
   improveDocument: `${SUPABASE_URL}/functions/v1/improve-document`,
+  exportMallette: `${SUPABASE_URL}/functions/v1/export-mallette`,
 };
 
 /** Maximum file upload size in bytes (5 MB) */

@@ -269,7 +269,16 @@ export async function exportMallette(params: {
   documents: Record<string, any>;
   cfaInfo: any;
 }): Promise<Blob> {
-  // For now, export as a JSON bundle. DOCX export requires a dedicated Edge Function.
-  const jsonStr = JSON.stringify(params, null, 2);
-  return new Blob([jsonStr], { type: 'application/json' });
+  const resp = await fetch(EDGE_FN.exportMallette, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(params),
+  });
+
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ error: 'Erreur réseau' }));
+    throw new Error(data.error || `Erreur ${resp.status}`);
+  }
+
+  return resp.blob();
 }
