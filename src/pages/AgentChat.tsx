@@ -386,6 +386,7 @@ export default function AgentChat() {
       setStreaming(critereId, false);
       abortRef.current = null;
     } catch (e: any) {
+      abortRef.current = null;
       if (e.name === 'AbortError') {
         setStreaming(critereId, false);
         return;
