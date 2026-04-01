@@ -177,6 +177,45 @@ export type Database = {
         }
         Relationships: []
       }
+      templates: {
+        Row: {
+          category: string
+          content_markdown: string
+          created_at: string
+          critere: number | null
+          file_name: string
+          file_type: string
+          id: string
+          indicateur: number | null
+          name: string
+          template_id: string
+        }
+        Insert: {
+          category: string
+          content_markdown: string
+          created_at?: string
+          critere?: number | null
+          file_name: string
+          file_type?: string
+          id?: string
+          indicateur?: number | null
+          name: string
+          template_id: string
+        }
+        Update: {
+          category?: string
+          content_markdown?: string
+          created_at?: string
+          critere?: number | null
+          file_name?: string
+          file_type?: string
+          id?: string
+          indicateur?: number | null
+          name?: string
+          template_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
