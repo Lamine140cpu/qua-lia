@@ -203,6 +203,7 @@ export default function AgentChat() {
   const { setDocStatus } = useDashboardStore();
 
   const [input, setInput] = useState('');
+  const [chatReady, setChatReady] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -264,50 +265,6 @@ export default function AgentChat() {
     },
     [],
   );
-
-  // Hard reset local au chargement du critère: état streaming, saisie, session
-  useEffect(() => {
-    if (!critereId) return;
-
-    setInput('');
-    requestAnimationFrame(() => textareaRef.current?.focus());
-
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-
-    const conv = useChatStore.getState().getConversation(critereId);
-
-    if (conv.streaming) {
-      setStreaming(critereId, false);
-    }
-
-    const staleAssistantIds = conv.messages
-      .filter((m) => m.role === 'assistant' && !m.content.trim())
-      .map((m) => m.id);
-
-    staleAssistantIds.forEach((id) => removeMessage(critereId, id));
-
-    let cancelled = false;
-    (async () => {
-      try {
-        await getValidAccessToken();
-      } catch {
-        if (cancelled) return;
-        toast({
-          title: 'Session expirée',
-          description: 'Reconnectez-vous pour relancer le chat.',
-          variant: 'destructive',
-        });
-        navigate('/auth', { replace: true });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [critereId, getValidAccessToken, navigate, removeMessage, setStreaming, toast]);
 
   const sendToAgent = useCallback(async (history: ChatMessage[]) => {
     if (!critereId || !critere) return;
@@ -472,7 +429,18 @@ export default function AgentChat() {
 
   useEffect(() => {
     if (!critereId || !critere) return;
+
+    let cancelled = false;
+    const focusFrame = requestAnimationFrame(() => textareaRef.current?.focus());
+
     sentRef.current = false;
+    setChatReady(false);
+    setInput('');
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
 
     const conv = useChatStore.getState().getConversation(critereId);
     const isStuck = conv.streaming && !abortRef.current;
@@ -480,25 +448,54 @@ export default function AgentChat() {
       conv.messages.length > 0 && conv.messages.every((m) => m.role === 'assistant' && !m.content);
     const hasStaleEmptyMessages = hasOnlyEmptyMessages && !conv.streaming && !abortRef.current;
 
-    const triggerAutoSend = () => {
-      if (sentRef.current) return;
-      sentRef.current = true;
-      sendToAgentRef.current([]);
-    };
-
     if (isStuck || hasStaleEmptyMessages) {
       console.log('[AgentChat] Stuck state detected, resetting', critereId);
       resetConversation(critereId);
-      setTimeout(triggerAutoSend, 50);
-    } else if (conv.messages.length === 0 && !conv.streaming) {
-      triggerAutoSend();
+    } else {
+      if (conv.streaming) {
+        setStreaming(critereId, false);
+      }
+
+      const staleAssistantIds = conv.messages
+        .filter((m) => m.role === 'assistant' && !m.content.trim())
+        .map((m) => m.id);
+
+      staleAssistantIds.forEach((id) => removeMessage(critereId, id));
     }
-  }, [critereId, critere, resetConversation]);
+
+    (async () => {
+      try {
+        await getValidAccessToken();
+        if (cancelled) return;
+
+        setChatReady(true);
+
+        const freshConv = useChatStore.getState().getConversation(critereId);
+        if (!sentRef.current && freshConv.messages.length === 0 && !freshConv.streaming) {
+          sentRef.current = true;
+          sendToAgentRef.current([]);
+        }
+      } catch {
+        if (cancelled) return;
+        toast({
+          title: 'Session expirée',
+          description: 'Reconnectez-vous pour relancer le chat.',
+          variant: 'destructive',
+        });
+        navigate('/auth', { replace: true });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(focusFrame);
+    };
+  }, [critereId, critere, getValidAccessToken, navigate, removeMessage, resetConversation, setStreaming, toast]);
 
   const isRequestInFlight = Boolean(conversation?.streaming && abortRef.current);
 
   const handleSend = useCallback(() => {
-    if (!input.trim() || !critereId || !conversation) return;
+    if (!chatReady || !input.trim() || !critereId || !conversation) return;
     if (isRequestInFlight) return;
 
     const userMsg: ChatMessage = {
@@ -513,7 +510,7 @@ export default function AgentChat() {
 
     const newHistory = [...conversation.messages, userMsg];
     sendToAgent(newHistory);
-  }, [input, critereId, conversation, isRequestInFlight, addMessage, sendToAgent]);
+  }, [chatReady, input, critereId, conversation, isRequestInFlight, addMessage, sendToAgent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -708,7 +705,7 @@ export default function AgentChat() {
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isRequestInFlight}
+                disabled={!chatReady || !input.trim() || isRequestInFlight}
                 className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-80 active:scale-95 transition-all"
               >
                 <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
