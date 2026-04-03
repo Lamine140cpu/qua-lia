@@ -385,9 +385,6 @@ export default function Dashboard() {
                         <Button size="sm" variant="outline" onClick={() => handleDownloadDocx(id)} className="gap-1 text-xs">
                           <Download className="w-3 h-3" /> .docx
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadXlsx(id)} className="gap-1 text-xs">
-                          <Download className="w-3 h-3" /> .xlsx
-                        </Button>
                       </div>
                     </div>
                   ))}
