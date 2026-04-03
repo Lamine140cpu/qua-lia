@@ -446,7 +446,7 @@ export default function AgentChat() {
   const isRequestInFlight = Boolean(conversation?.streaming && abortRef.current);
 
   const handleSend = useCallback(() => {
-    if (!chatReady || !input.trim() || !critereId || !conversation) return;
+    if (!input.trim() || !critereId || !conversation) return;
     if (isRequestInFlight) return;
 
     const userMsg: ChatMessage = {
@@ -461,7 +461,7 @@ export default function AgentChat() {
 
     const newHistory = [...conversation.messages, userMsg];
     sendToAgent(newHistory);
-  }, [chatReady, input, critereId, conversation, isRequestInFlight, addMessage, sendToAgent]);
+  }, [input, critereId, conversation, isRequestInFlight, addMessage, sendToAgent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
