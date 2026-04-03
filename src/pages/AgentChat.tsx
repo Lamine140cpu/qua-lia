@@ -405,78 +405,43 @@ export default function AgentChat() {
     }
   }, [critereId, critere, cfaInfo, formations, organisation, addMessage, appendToLastAssistant, setStreaming, addGeneratedDoc, removeMessage, setDocStatus, setCfaInfo, setOrganisation, toast, navigate, getValidAccessToken]);
 
-  // Consolidated mount effect: fix stuck state + auto-send
+  // Mount: clean stuck state, focus textarea, auto-start if empty
   const sentRef = useRef(false);
-  const sendToAgentRef = useRef(sendToAgent);
-
-  useEffect(() => {
-    sendToAgentRef.current = sendToAgent;
-  }, [sendToAgent]);
 
   useEffect(() => {
     if (!critereId || !critere) return;
 
-    let cancelled = false;
-    const focusFrame = requestAnimationFrame(() => textareaRef.current?.focus());
-
+    // Focus textarea
+    textareaRef.current?.focus();
     sentRef.current = false;
-    setChatReady(false);
     setInput('');
 
+    // Abort any in-flight request from a previous critere
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
 
+    // Clean stuck persisted state
     const conv = useChatStore.getState().getConversation(critereId);
-    const isStuck = conv.streaming && !abortRef.current;
-    const hasOnlyEmptyMessages =
-      conv.messages.length > 0 && conv.messages.every((m) => m.role === 'assistant' && !m.content);
-    const hasStaleEmptyMessages = hasOnlyEmptyMessages && !conv.streaming && !abortRef.current;
-
-    if (isStuck || hasStaleEmptyMessages) {
-      console.log('[AgentChat] Stuck state detected, resetting', critereId);
-      resetConversation(critereId);
-    } else {
-      if (conv.streaming) {
-        setStreaming(critereId, false);
-      }
-
-      const staleAssistantIds = conv.messages
-        .filter((m) => m.role === 'assistant' && !m.content.trim())
-        .map((m) => m.id);
-
-      staleAssistantIds.forEach((id) => removeMessage(critereId, id));
+    if (conv.streaming) {
+      setStreaming(critereId, false);
     }
+    // Remove empty assistant messages (stale)
+    conv.messages
+      .filter((m) => m.role === 'assistant' && !m.content.trim())
+      .forEach((m) => removeMessage(critereId, m.id));
 
-    (async () => {
-      try {
-        await getValidAccessToken();
-        if (cancelled) return;
-
-        setChatReady(true);
-
-        const freshConv = useChatStore.getState().getConversation(critereId);
-        if (!sentRef.current && freshConv.messages.length === 0 && !freshConv.streaming) {
-          sentRef.current = true;
-          sendToAgentRef.current([]);
-        }
-      } catch {
-        if (cancelled) return;
-        toast({
-          title: 'Session expirée',
-          description: 'Reconnectez-vous pour relancer le chat.',
-          variant: 'destructive',
-        });
-        navigate('/auth', { replace: true });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(focusFrame);
-    };
-  }, [critereId, critere, getValidAccessToken, navigate, removeMessage, resetConversation, setStreaming, toast]);
+    // Auto-start conversation if no messages exist
+    const freshConv = useChatStore.getState().getConversation(critereId);
+    if (freshConv.messages.length === 0 && !sentRef.current) {
+      sentRef.current = true;
+      // Small delay to let React settle
+      const timer = setTimeout(() => sendToAgent([]), 150);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [critereId]);
 
   const isRequestInFlight = Boolean(conversation?.streaming && abortRef.current);
 
