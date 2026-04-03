@@ -203,7 +203,7 @@ export default function AgentChat() {
   const { setDocStatus } = useDashboardStore();
 
   const [input, setInput] = useState('');
-  const [chatReady, setChatReady] = useState(false);
+  const [chatReady, setChatReady] = useState(true); // Start ready — guard is in handleSend
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -224,20 +224,6 @@ export default function AgentChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
-
-  
-
-  // Safety net: if persisted state says streaming but no active request, unlock input
-  useEffect(() => {
-    if (!critereId || !conversation?.streaming) return;
-    const timer = setTimeout(() => {
-      if (conversation.streaming && !abortRef.current) {
-        console.log('[AgentChat] Clearing stale streaming lock', critereId);
-        setStreaming(critereId, false);
-      }
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [critereId, conversation?.streaming, setStreaming]);
 
   // Auto-resize textarea
   useEffect(() => {
