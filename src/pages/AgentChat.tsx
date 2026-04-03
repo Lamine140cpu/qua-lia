@@ -428,16 +428,27 @@ export default function AgentChat() {
       setStreaming(critereId, false);
     }
     // Remove empty assistant messages (stale)
-    conv.messages
+    const emptyIds = conv.messages
       .filter((m) => m.role === 'assistant' && !m.content.trim())
-      .forEach((m) => removeMessage(critereId, m.id));
+      .map((m) => m.id);
+    emptyIds.forEach((id) => removeMessage(critereId, id));
+
+    // Re-read after cleanup
+    const freshConv = useChatStore.getState().getConversation(critereId);
+    console.log('[AgentChat] Mount cleanup done', {
+      critereId,
+      messagesCount: freshConv.messages.length,
+      streaming: freshConv.streaming,
+      removedEmpty: emptyIds.length,
+    });
 
     // Auto-start conversation if no messages exist
-    const freshConv = useChatStore.getState().getConversation(critereId);
     if (freshConv.messages.length === 0 && !sentRef.current) {
       sentRef.current = true;
-      // Small delay to let React settle
-      const timer = setTimeout(() => sendToAgent([]), 150);
+      const timer = setTimeout(() => {
+        console.log('[AgentChat] Auto-starting conversation for', critereId);
+        sendToAgent([]);
+      }, 200);
       return () => clearTimeout(timer);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
