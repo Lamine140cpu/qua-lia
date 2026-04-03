@@ -19,6 +19,7 @@ const CGV = lazy(() => import("./pages/CGV"));
 const CGU = lazy(() => import("./pages/CGU"));
 const Confidentialite = lazy(() => import("./pages/Confidentialite"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 
 const queryClient = new QueryClient();
 
