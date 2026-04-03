@@ -19,6 +19,7 @@ const CGV = lazy(() => import("./pages/CGV"));
 const CGU = lazy(() => import("./pages/CGU"));
 const Confidentialite = lazy(() => import("./pages/Confidentialite"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
                 <Route path="/cgv" element={<CGV />} />
                 <Route path="/cgu" element={<CGU />} />
                 <Route path="/confidentialite" element={<Confidentialite />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

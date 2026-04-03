@@ -7,8 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PRODUCT_COMPLET = "prod_UFRI1fsw4PArgg";
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -43,37 +41,48 @@ serve(async (req) => {
 
     const customerId = customers.data[0].id;
 
-    // Check for completed checkout sessions with payment for "complet" product
+    // Check for completed checkout sessions
     const sessions = await stripe.checkout.sessions.list({
       customer: customerId,
-      limit: 20,
+      limit: 50,
     });
 
     let hasComplet = false;
+    let hasPreaudit = false;
+
     for (const session of sessions.data) {
-      if (session.payment_status === "paid" && session.metadata?.plan_id === "complet") {
-        hasComplet = true;
-        break;
+      if (session.payment_status === "paid") {
+        const planId = session.metadata?.plan_id;
+        if (planId === "complet") hasComplet = true;
+        if (planId === "preaudit") hasPreaudit = true;
       }
     }
 
-    // Also check one-time payment intents for the complet product
-    if (!hasComplet) {
+    // Also check payment intents
+    if (!hasComplet || !hasPreaudit) {
       const paymentIntents = await stripe.paymentIntents.list({
         customer: customerId,
-        limit: 20,
+        limit: 50,
       });
       for (const pi of paymentIntents.data) {
-        if (pi.status === "succeeded" && pi.metadata?.plan_id === "complet") {
-          hasComplet = true;
-          break;
+        if (pi.status === "succeeded") {
+          const planId = pi.metadata?.plan_id;
+          if (planId === "complet") hasComplet = true;
+          if (planId === "preaudit") hasPreaudit = true;
         }
       }
     }
 
+    // Determine plan: complet > preaudit > gratuit
+    let plan = "gratuit";
+    if (hasComplet) plan = "complet";
+    else if (hasPreaudit) plan = "preaudit";
+
     return new Response(JSON.stringify({
-      subscribed: hasComplet,
-      plan: hasComplet ? "complet" : "gratuit",
+      subscribed: hasComplet || hasPreaudit,
+      plan,
+      hasComplet,
+      hasPreaudit,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

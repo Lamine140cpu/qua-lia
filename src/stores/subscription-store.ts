@@ -1,18 +1,27 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 
+export type PlanId = 'gratuit' | 'preaudit' | 'complet';
+
 interface SubscriptionState {
-  currentPlanId: string;
+  currentPlanId: PlanId;
+  hasComplet: boolean;
+  hasPreaudit: boolean;
   loading: boolean;
   checkoutError: string | null;
 
   fetchPlans: () => Promise<void>;
   fetchSubscription: () => Promise<void>;
   checkout: (planId: string) => Promise<void>;
+
+  /** Check if user can access a given feature */
+  canAccess: (feature: 'allCriteres' | 'export' | 'audit' | 'improve' | 'visual') => boolean;
 }
 
-export const useSubscriptionStore = create<SubscriptionState>((set) => ({
+export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   currentPlanId: 'gratuit',
+  hasComplet: false,
+  hasPreaudit: false,
   loading: false,
   checkoutError: null,
 
@@ -29,7 +38,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set) => ({
         return;
       }
       if (data?.plan) {
-        set({ currentPlanId: data.plan });
+        set({
+          currentPlanId: data.plan as PlanId,
+          hasComplet: !!data.hasComplet,
+          hasPreaudit: !!data.hasPreaudit,
+        });
       }
     } catch (err) {
       console.error('fetchSubscription error:', err);
@@ -64,6 +77,21 @@ export const useSubscriptionStore = create<SubscriptionState>((set) => ({
       }
     } catch (err: any) {
       set({ loading: false, checkoutError: err.message || 'Erreur réseau' });
+    }
+  },
+
+  canAccess: (feature) => {
+    const { currentPlanId } = get();
+    switch (feature) {
+      case 'allCriteres':
+      case 'export':
+      case 'improve':
+      case 'visual':
+        return currentPlanId === 'complet';
+      case 'audit':
+        return currentPlanId === 'complet' || currentPlanId === 'preaudit';
+      default:
+        return false;
     }
   },
 }));

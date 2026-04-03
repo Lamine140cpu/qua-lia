@@ -34,7 +34,7 @@ export default function Dashboard() {
   const { documents, setDocStatus, auditResult, auditLoading, auditError, setAuditResult, setAuditLoading, setAuditError, cleanupStuckGenerating, restoreVersion } = useDashboardStore();
   const { conversations } = useChatStore();
   const addNotification = useNotificationStore((s) => s.addNotification);
-  const { currentPlanId, fetchSubscription } = useSubscriptionStore();
+  const { currentPlanId, fetchSubscription, canAccess } = useSubscriptionStore();
 
   const paymentChecked = useRef(false);
 
@@ -331,9 +331,15 @@ export default function Dashboard() {
                 {validating ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageCheck className="w-4 h-4" />}
                 Valider les documents
               </Button>
-              <Button onClick={handleExportMallette} disabled={exporting} variant="outline" className="gap-1.5">
-                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
-                Exporter la mallette ({generatedCount} docs)
+              <Button
+                onClick={canAccess('export') ? handleExportMallette : () => navigate('/pricing')}
+                disabled={exporting}
+                variant="outline"
+                className="gap-1.5"
+              >
+                {!canAccess('export') && <Lock className="w-4 h-4" />}
+                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : !canAccess('export') ? null : <Archive className="w-4 h-4" />}
+                {canAccess('export') ? `Exporter la mallette (${generatedCount} docs)` : 'Export — Plan Complet'}
               </Button>
             </div>
           </ScrollReveal>

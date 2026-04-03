@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -125,6 +126,26 @@ export default function Auth() {
                 minLength={6}
               />
             </div>
+
+            {isLogin && (
+              <button
+                type="button"
+                className="text-sm text-blue-600 hover:underline w-full text-right"
+                onClick={async () => {
+                  if (!email.trim()) {
+                    toast.error('Entrez votre email d\'abord');
+                    return;
+                  }
+                  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: `${window.location.origin}/reset-password`,
+                  });
+                  if (error) toast.error(error.message);
+                  else toast.success('Email de réinitialisation envoyé !');
+                }}
+              >
+                Mot de passe oublié ?
+              </button>
+            )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting
