@@ -27,31 +27,36 @@ export const SignupEmail = ({
   recipient,
   confirmationUrl,
 }: SignupEmailProps) => (
-  <Html lang="en" dir="ltr">
+  <Html lang="fr" dir="ltr">
     <Head />
-    <Preview>Confirm your email for {siteName}</Preview>
+    <Preview>Confirmez votre inscription sur Qual'IA</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>Confirm your email</Heading>
+        <Text style={logo}>Qual'IA</Text>
+        <Heading style={h1}>Bienvenue sur Qual'IA !</Heading>
         <Text style={text}>
-          Thanks for signing up for{' '}
+          Merci de vous être inscrit sur{' '}
           <Link href={siteUrl} style={link}>
-            <strong>{siteName}</strong>
+            <strong>Qual'IA</strong>
           </Link>
-          !
+          , votre assistant intelligent pour la certification Qualiopi.
         </Text>
         <Text style={text}>
-          Please confirm your email address (
+          Pour activer votre compte et accéder à votre mallette documentaire,
+          veuillez confirmer votre adresse email (
           <Link href={`mailto:${recipient}`} style={link}>
             {recipient}
           </Link>
-          ) by clicking the button below:
+          ) en cliquant ci-dessous :
         </Text>
         <Button style={button} href={confirmationUrl}>
-          Verify Email
+          Confirmer mon email
         </Button>
         <Text style={footer}>
-          If you didn't create an account, you can safely ignore this email.
+          Si vous n'avez pas créé de compte, vous pouvez ignorer cet email en toute sécurité.
+        </Text>
+        <Text style={footer}>
+          — L'équipe Qual'IA · Groupe Averreo
         </Text>
       </Container>
     </Body>
@@ -60,27 +65,34 @@ export const SignupEmail = ({
 
 export default SignupEmail
 
-const main = { backgroundColor: '#ffffff', fontFamily: 'Arial, sans-serif' }
-const container = { padding: '20px 25px' }
+const main = { backgroundColor: '#ffffff', fontFamily: "'DM Sans', 'Source Sans 3', Arial, sans-serif" }
+const container = { padding: '30px 25px' }
+const logo = {
+  fontSize: '28px',
+  fontWeight: 'bold' as const,
+  color: '#1e3a5f',
+  margin: '0 0 24px',
+}
 const h1 = {
   fontSize: '22px',
   fontWeight: 'bold' as const,
-  color: '#000000',
+  color: '#1e3a5f',
   margin: '0 0 20px',
 }
 const text = {
-  fontSize: '14px',
-  color: '#55575d',
-  lineHeight: '1.5',
-  margin: '0 0 25px',
+  fontSize: '15px',
+  color: '#3c4257',
+  lineHeight: '1.6',
+  margin: '0 0 20px',
 }
-const link = { color: 'inherit', textDecoration: 'underline' }
+const link = { color: '#1e3a5f', textDecoration: 'underline' }
 const button = {
-  backgroundColor: '#000000',
+  backgroundColor: '#1e3a5f',
   color: '#ffffff',
-  fontSize: '14px',
+  fontSize: '15px',
+  fontWeight: 'bold' as const,
   borderRadius: '8px',
-  padding: '12px 20px',
+  padding: '14px 28px',
   textDecoration: 'none',
 }
-const footer = { fontSize: '12px', color: '#999999', margin: '30px 0 0' }
+const footer = { fontSize: '12px', color: '#8898aa', margin: '30px 0 0', lineHeight: '1.5' }
