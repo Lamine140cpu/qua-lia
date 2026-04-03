@@ -34,7 +34,7 @@ export default function Dashboard() {
   const { documents, setDocStatus, auditResult, auditLoading, auditError, setAuditResult, setAuditLoading, setAuditError, cleanupStuckGenerating, restoreVersion } = useDashboardStore();
   const { conversations } = useChatStore();
   const addNotification = useNotificationStore((s) => s.addNotification);
-  const { currentPlanId, fetchSubscription } = useSubscriptionStore();
+  const { currentPlanId, fetchSubscription, canAccess } = useSubscriptionStore();
 
   const paymentChecked = useRef(false);
 
