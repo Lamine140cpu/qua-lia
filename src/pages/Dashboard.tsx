@@ -19,7 +19,7 @@ import {
   Sparkles, History, Archive, AlertTriangle, Lock,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { API_BASE } from '@/lib/constants';
+
 
 // Extracted sub-components
 import { AuditSection } from '@/components/dashboard/AuditSection';
