@@ -47,50 +47,38 @@ Formations : ${formations?.map((f: any) => f.intitule).join(", ") || "Non rensei
 Référent handicap : ${organisation?.referentHandicap || "[À désigner]"}
 Formateurs : ${organisation?.effectifFormateurs || "Non renseigné"}`;
 
-    // ── Mode IMAGE: Claude prompt → Imagen render ──
-    if (mode === "image") {
-      const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-      if (!ANTHROPIC_API_KEY) {
-        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
-      // Step 1: Claude Sonnet generates an image generation prompt
-      const promptResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    // ── Mode IMAGE: generate prompt then image ──
+    if (mode === "image") {
+      // Step 1: Generate image prompt
+      const promptResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1024,
-          system: `Tu es un expert en design graphique professionnel. Ton rôle est de créer un prompt détaillé en anglais pour un générateur d'images IA.
-Le prompt doit décrire un document visuel professionnel, propre, avec un style corporate bleu marine (#1e3a5f) et blanc.
-Le résultat doit ressembler à un vrai document d'entreprise français, lisible et structuré.
-Réponds UNIQUEMENT avec le prompt en anglais, rien d'autre.`,
-          messages: [{
-            role: "user",
-            content: `Crée un prompt de génération d'image pour : "${type}" avec ces données :\n${contextData}\n\nContexte : ${prompt}`,
-          }],
+          model: "google/gemini-2.5-flash-lite",
+          messages: [
+            { role: "system", content: `Tu es un expert en design graphique. Crée un prompt détaillé en anglais pour un générateur d'images IA. Le prompt doit décrire un document visuel professionnel corporate bleu marine (#1e3a5f) et blanc. Réponds UNIQUEMENT avec le prompt en anglais.` },
+            { role: "user", content: `Crée un prompt de génération d'image pour : "${type}" avec ces données :\n${contextData}\n\nContexte : ${prompt}` },
+          ],
         }),
       });
 
       if (!promptResponse.ok) {
-        const errorText = await promptResponse.text();
-        console.error("Anthropic prompt error:", promptResponse.status, errorText);
+        console.error("Prompt gen error:", promptResponse.status);
         return new Response(JSON.stringify({ error: "Erreur génération du prompt" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       const promptData = await promptResponse.json();
-      const imagePrompt = promptData.content?.[0]?.text || "";
+      const imagePrompt = promptData.choices?.[0]?.message?.content || "";
 
-      // Step 2: Lovable AI Imagen generates the image
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (!LOVABLE_API_KEY) {
-        return new Response(JSON.stringify({ error: "LOVABLE_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-
+      // Step 2: Generate image
       const imageResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -104,44 +92,29 @@ Réponds UNIQUEMENT avec le prompt en anglais, rien d'autre.`,
       });
 
       if (!imageResponse.ok) {
-        const errorText = await imageResponse.text();
-        console.error("Imagen error:", imageResponse.status, errorText);
-        // Fallback to HTML mode
         return new Response(JSON.stringify({ error: "Génération d'image indisponible, utilisez le mode HTML" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       const imageData = await imageResponse.json();
-      // The image URL or base64 from the response
       const imageContent = imageData.choices?.[0]?.message?.content || "";
-      
-      // Check if we got an image URL or base64 data
+
       const urlMatch = imageContent.match(/https?:\/\/[^\s"]+\.(png|jpg|jpeg|webp)/i);
       if (urlMatch) {
-        return new Response(JSON.stringify({ imageUrl: urlMatch[0] }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ imageUrl: urlMatch[0] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // If no direct URL, try to extract base64 image data
       const base64Match = imageContent.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/);
       if (base64Match) {
-        return new Response(JSON.stringify({ imageUrl: base64Match[0] }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ imageUrl: base64Match[0] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // Fallback: return the text as HTML
-      return new Response(JSON.stringify({ html: `<div style="text-align:center;padding:40px;color:#6b7280;">Génération d'image non disponible pour ce type. Contenu textuel généré à la place.</div><div>${imageContent}</div>` }), {
+      // Fallback: return text as HTML
+      return new Response(JSON.stringify({ html: `<div style="text-align:center;padding:40px;color:#6b7280;">Image non disponible. Contenu :</div><div>${imageContent}</div>` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ── Mode HTML: Lovable AI Gateway generates styled HTML ──
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
+    // ── Mode HTML ──
     const systemPrompt = `Tu es Qual'IA, expert Qualiopi RNQ v9. Tu génères des documents HTML professionnels et visuellement soignés.
 
 IMPORTANT : Tu es Qual'IA, l'assistant de Groupe Averreo.
@@ -182,9 +155,7 @@ IMPORTANT : Tu es Qual'IA, l'assistant de Groupe Averreo.
     let html = contentData.choices?.[0]?.message?.content || "";
     html = html.replace(/```html\n?/g, "").replace(/```\n?/g, "").trim();
 
-    return new Response(JSON.stringify({ html }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ html }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("generate-visual error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erreur inconnue" }), {

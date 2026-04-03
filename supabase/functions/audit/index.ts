@@ -25,20 +25,14 @@ serve(async (req) => {
   try {
     const userId = await getUserId(req);
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Non authentifié" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Non authentifié" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const body = await req.json();
     const { documents, cfaInfo, selectedIndicateurs } = body;
 
     if (!documents || !cfaInfo) {
-      return new Response(
-        JSON.stringify({ error: "documents et cfaInfo requis" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "documents et cfaInfo requis" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const docsText = Object.entries(documents as Record<string, any>)
@@ -90,68 +84,49 @@ Produis un rapport JSON avec cette structure exacte :
 
 Réponds UNIQUEMENT avec le JSON, sans markdown ni backticks.`;
 
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Call Anthropic API with Claude Opus for audit (most powerful model)
-    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-20250514",
-        max_tokens: 8192,
-        system: "Tu es un auditeur Qualiopi certifié COFRAC, expert RNQ v9. Tu es Qual'IA, l'assistant de Groupe Averreo. Réponds uniquement en JSON valide.",
-        messages: [{ role: "user", content: auditPrompt }],
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Tu es un auditeur Qualiopi certifié COFRAC, expert RNQ v9. Tu es Qual'IA, l'assistant de Groupe Averreo. Réponds uniquement en JSON valide." },
+          { role: "user", content: auditPrompt },
+        ],
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error("Anthropic error:", aiResponse.status, errorText);
+      console.error("Lovable AI error:", aiResponse.status, errorText);
       if (aiResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Limite de requêtes Anthropic atteinte." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: "Limite de requêtes atteinte, réessayez." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      return new Response(
-        JSON.stringify({ error: `Erreur Anthropic: ${aiResponse.status}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: `Erreur IA: ${aiResponse.status}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const aiData = await aiResponse.json();
-    const content = aiData.content?.[0]?.text || "";
+    const content = aiData.choices?.[0]?.message?.content || "";
 
     let auditResult;
     try {
       const cleanJson = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       auditResult = JSON.parse(cleanJson);
     } catch {
-      return new Response(
-        JSON.stringify({ error: "Impossible de parser le résultat d'audit", raw: content }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Impossible de parser le résultat d'audit", raw: content }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return new Response(
-      JSON.stringify(auditResult),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify(auditResult), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("audit error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Erreur inconnue" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erreur inconnue" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

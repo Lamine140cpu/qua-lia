@@ -19,7 +19,7 @@ import {
   Sparkles, History, Archive, AlertTriangle, Lock,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { API_BASE } from '@/lib/constants';
+
 
 // Extracted sub-components
 import { AuditSection } from '@/components/dashboard/AuditSection';
@@ -152,15 +152,10 @@ export default function Dashboard() {
     if (!doc?.content) return;
     const filename = `${indicateurId}_${cfaInfo.nom || 'CFA'}`;
     try {
-      const resp = await fetch(`${API_BASE}/api/export-docx`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: doc.content, filename }),
-      });
-      if (!resp.ok) throw new Error('Erreur export');
-      const arrayBuf = await resp.arrayBuffer();
-      if (arrayBuf.byteLength === 0) throw new Error('Fichier vide reçu');
-      const url = URL.createObjectURL(new Blob([arrayBuf], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+      const { exportSingleDocx } = await import('@/lib/api');
+      const blob = await exportSingleDocx({ markdown: doc.content, filename, cfaInfo });
+      if (blob.size === 0) throw new Error('Fichier vide reçu');
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${filename}.docx`;
@@ -168,30 +163,6 @@ export default function Dashboard() {
       URL.revokeObjectURL(url);
     } catch (e: any) {
       toast({ title: 'Erreur export DOCX', description: e.message || 'Serveur injoignable', variant: 'destructive' });
-    }
-  };
-
-  const handleDownloadXlsx = async (indicateurId: string) => {
-    const doc = documents[indicateurId];
-    if (!doc?.content) return;
-    const filename = `${indicateurId}_${cfaInfo.nom || 'CFA'}`;
-    try {
-      const resp = await fetch(`${API_BASE}/api/export-xlsx`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: doc.content, filename }),
-      });
-      if (!resp.ok) throw new Error('Erreur export');
-      const blob = await resp.blob();
-      if (blob.size === 0) throw new Error('Fichier vide reçu');
-      const url = URL.createObjectURL(new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${filename}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      toast({ title: 'Erreur export Excel', description: e.message || 'Serveur injoignable', variant: 'destructive' });
     }
   };
 
@@ -413,9 +384,6 @@ export default function Dashboard() {
                         )}
                         <Button size="sm" variant="outline" onClick={() => handleDownloadDocx(id)} className="gap-1 text-xs">
                           <Download className="w-3 h-3" /> .docx
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadXlsx(id)} className="gap-1 text-xs">
-                          <Download className="w-3 h-3" /> .xlsx
                         </Button>
                       </div>
                     </div>
