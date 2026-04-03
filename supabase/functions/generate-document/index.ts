@@ -68,8 +68,6 @@ Pied : Rédigé par / Date / Prochaine révision / Signature.
 # titre | ## articles | ### sous-sections | | tableaux | - listes | **gras**`;
 }
 
-// ── Auth ──
-
 async function getUserId(req: Request): Promise<string | null> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return null;
@@ -79,8 +77,6 @@ async function getUserId(req: Request): Promise<string | null> {
   if (error || !user) return null;
   return user.id;
 }
-
-// ── Fetch matching templates from DB ──
 
 async function fetchTemplates(indicateurId: string): Promise<string[]> {
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -105,49 +101,6 @@ async function fetchTemplates(indicateurId: string): Promise<string[]> {
   }
   return templates;
 }
-
-// ── Anthropic SSE → OpenAI-compatible SSE transformer ──
-
-function anthropicToOpenAIStream(anthropicBody: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  const reader = anthropicBody.getReader();
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let buffer = "";
-
-  return new ReadableStream({
-    async pull(controller) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-          return;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          const line = buffer.slice(0, idx).trim();
-          buffer = buffer.slice(idx + 1);
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const evt = JSON.parse(line.slice(6));
-            if (evt.type === "content_block_delta" && evt.delta?.text) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: evt.delta.text } }] })}\n\n`));
-            } else if (evt.type === "message_stop") {
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              controller.close();
-              reader.cancel();
-              return;
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    },
-    cancel() { reader.cancel(); },
-  });
-}
-
-// ── Handler ──
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -223,39 +176,39 @@ Le document doit :
     const typesActions: string[] = cfaInfo?.typesActions || [];
     const systemPrompt = buildSystemPrompt(typesActions, hasTemplate);
 
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // ── Lovable AI Gateway (streaming) ──
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY non configurée" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
+        model: "google/gemini-2.5-flash",
         stream: true,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error("Anthropic error:", aiResponse.status, errorText);
+      console.error("Lovable AI error:", aiResponse.status, errorText);
       if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requêtes Anthropic atteinte." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ error: "Limite de requêtes atteinte, réessayez." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      return new Response(JSON.stringify({ error: `Erreur Anthropic: ${aiResponse.status}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: `Erreur IA: ${aiResponse.status}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const openAIStream = anthropicToOpenAIStream(aiResponse.body!);
-
-    return new Response(openAIStream, {
+    // Stream is already OpenAI-compatible SSE — pass through directly
+    return new Response(aiResponse.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
     });
   } catch (e) {
