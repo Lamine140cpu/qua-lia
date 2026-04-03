@@ -203,7 +203,7 @@ export default function AgentChat() {
   const { setDocStatus } = useDashboardStore();
 
   const [input, setInput] = useState('');
-  const [chatReady, setChatReady] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -224,20 +224,6 @@ export default function AgentChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation?.messages, conversation?.streaming]);
-
-  
-
-  // Safety net: if persisted state says streaming but no active request, unlock input
-  useEffect(() => {
-    if (!critereId || !conversation?.streaming) return;
-    const timer = setTimeout(() => {
-      if (conversation.streaming && !abortRef.current) {
-        console.log('[AgentChat] Clearing stale streaming lock', critereId);
-        setStreaming(critereId, false);
-      }
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [critereId, conversation?.streaming, setStreaming]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -419,83 +405,59 @@ export default function AgentChat() {
     }
   }, [critereId, critere, cfaInfo, formations, organisation, addMessage, appendToLastAssistant, setStreaming, addGeneratedDoc, removeMessage, setDocStatus, setCfaInfo, setOrganisation, toast, navigate, getValidAccessToken]);
 
-  // Consolidated mount effect: fix stuck state + auto-send
+  // Mount: clean stuck state, focus textarea, auto-start if empty
   const sentRef = useRef(false);
-  const sendToAgentRef = useRef(sendToAgent);
-
-  useEffect(() => {
-    sendToAgentRef.current = sendToAgent;
-  }, [sendToAgent]);
 
   useEffect(() => {
     if (!critereId || !critere) return;
 
-    let cancelled = false;
-    const focusFrame = requestAnimationFrame(() => textareaRef.current?.focus());
-
+    // Focus textarea
+    textareaRef.current?.focus();
     sentRef.current = false;
-    setChatReady(false);
     setInput('');
 
+    // Abort any in-flight request from a previous critere
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
 
+    // Clean stuck persisted state
     const conv = useChatStore.getState().getConversation(critereId);
-    const isStuck = conv.streaming && !abortRef.current;
-    const hasOnlyEmptyMessages =
-      conv.messages.length > 0 && conv.messages.every((m) => m.role === 'assistant' && !m.content);
-    const hasStaleEmptyMessages = hasOnlyEmptyMessages && !conv.streaming && !abortRef.current;
-
-    if (isStuck || hasStaleEmptyMessages) {
-      console.log('[AgentChat] Stuck state detected, resetting', critereId);
-      resetConversation(critereId);
-    } else {
-      if (conv.streaming) {
-        setStreaming(critereId, false);
-      }
-
-      const staleAssistantIds = conv.messages
-        .filter((m) => m.role === 'assistant' && !m.content.trim())
-        .map((m) => m.id);
-
-      staleAssistantIds.forEach((id) => removeMessage(critereId, id));
+    if (conv.streaming) {
+      setStreaming(critereId, false);
     }
+    // Remove empty assistant messages (stale)
+    const emptyIds = conv.messages
+      .filter((m) => m.role === 'assistant' && !m.content.trim())
+      .map((m) => m.id);
+    emptyIds.forEach((id) => removeMessage(critereId, id));
 
-    (async () => {
-      try {
-        await getValidAccessToken();
-        if (cancelled) return;
+    // Re-read after cleanup
+    const freshConv = useChatStore.getState().getConversation(critereId);
+    console.log('[AgentChat] Mount cleanup done', {
+      critereId,
+      messagesCount: freshConv.messages.length,
+      streaming: freshConv.streaming,
+      removedEmpty: emptyIds.length,
+    });
 
-        setChatReady(true);
-
-        const freshConv = useChatStore.getState().getConversation(critereId);
-        if (!sentRef.current && freshConv.messages.length === 0 && !freshConv.streaming) {
-          sentRef.current = true;
-          sendToAgentRef.current([]);
-        }
-      } catch {
-        if (cancelled) return;
-        toast({
-          title: 'Session expirée',
-          description: 'Reconnectez-vous pour relancer le chat.',
-          variant: 'destructive',
-        });
-        navigate('/auth', { replace: true });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(focusFrame);
-    };
-  }, [critereId, critere, getValidAccessToken, navigate, removeMessage, resetConversation, setStreaming, toast]);
+    // Auto-start conversation if no messages exist
+    if (freshConv.messages.length === 0 && !sentRef.current) {
+      sentRef.current = true;
+      const timer = setTimeout(() => {
+        console.log('[AgentChat] Auto-starting conversation for', critereId);
+        sendToAgent([]);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [critereId]);
 
   const isRequestInFlight = Boolean(conversation?.streaming && abortRef.current);
 
   const handleSend = useCallback(() => {
-    if (!chatReady || !input.trim() || !critereId || !conversation) return;
+    if (!input.trim() || !critereId || !conversation) return;
     if (isRequestInFlight) return;
 
     const userMsg: ChatMessage = {
@@ -510,7 +472,7 @@ export default function AgentChat() {
 
     const newHistory = [...conversation.messages, userMsg];
     sendToAgent(newHistory);
-  }, [chatReady, input, critereId, conversation, isRequestInFlight, addMessage, sendToAgent]);
+  }, [input, critereId, conversation, isRequestInFlight, addMessage, sendToAgent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -705,7 +667,7 @@ export default function AgentChat() {
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
               <button
                 onClick={handleSend}
-                disabled={!chatReady || !input.trim() || isRequestInFlight}
+                disabled={!input.trim() || isRequestInFlight}
                 className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-80 active:scale-95 transition-all"
               >
                 <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
