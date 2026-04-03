@@ -132,6 +132,26 @@ export default function Auth() {
               />
             </div>
 
+            {isLogin && (
+              <button
+                type="button"
+                className="text-sm text-blue-600 hover:underline w-full text-right"
+                onClick={async () => {
+                  if (!email.trim()) {
+                    toast.error('Entrez votre email d\'abord');
+                    return;
+                  }
+                  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: `${window.location.origin}/reset-password`,
+                  });
+                  if (error) toast.error(error.message);
+                  else toast.success('Email de réinitialisation envoyé !');
+                }}
+              >
+                Mot de passe oublié ?
+              </button>
+            )}
+
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting
                 ? 'Chargement...'
