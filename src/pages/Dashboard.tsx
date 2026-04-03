@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
@@ -36,10 +36,26 @@ export default function Dashboard() {
   const addNotification = useNotificationStore((s) => s.addNotification);
   const { currentPlanId, fetchSubscription } = useSubscriptionStore();
 
+  const paymentChecked = useRef(false);
+
   useEffect(() => {
     cleanupStuckGenerating();
     fetchSubscription();
-  }, [cleanupStuckGenerating, fetchSubscription]);
+
+    // After Stripe redirect, re-check subscription with a small delay
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success' && !paymentChecked.current) {
+      paymentChecked.current = true;
+      toast({ title: '🎉 Paiement reçu !', description: 'Vérification de votre accès...' });
+      // Stripe may take a moment to finalize
+      const timer = setTimeout(() => {
+        fetchSubscription().then(() => {
+          toast({ title: 'Accès débloqué', description: 'Tous les critères sont maintenant disponibles.' });
+        });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [cleanupStuckGenerating, fetchSubscription, toast]);
 
   const staleCount = Object.values(documents).filter((d) => d.stale).length;
 

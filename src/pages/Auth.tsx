@@ -137,7 +137,7 @@ export default function Auth() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          100% gratuit — Vos données sont sécurisées avec Supabase
+          100% gratuit — Vos données sont sécurisées et chiffrées
         </p>
       </div>
     </div>
