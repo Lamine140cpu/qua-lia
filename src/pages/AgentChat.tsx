@@ -656,7 +656,7 @@ export default function AgentChat() {
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
               <button
                 onClick={handleSend}
-                disabled={!chatReady || !input.trim() || isRequestInFlight}
+                disabled={!input.trim() || isRequestInFlight}
                 className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-80 active:scale-95 transition-all"
               >
                 <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
