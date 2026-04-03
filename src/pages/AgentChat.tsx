@@ -203,7 +203,7 @@ export default function AgentChat() {
   const { setDocStatus } = useDashboardStore();
 
   const [input, setInput] = useState('');
-  const [chatReady, setChatReady] = useState(true); // Start ready — guard is in handleSend
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
