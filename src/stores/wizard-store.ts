@@ -97,7 +97,7 @@ export interface WizardState {
 const initialCfaInfo: CfaInfo = {
   nom: '', siret: '', adresse: '', ville: '', codePostal: '',
   siteWeb: '', email: '', telephone: '', nda: '', uai: '', responsable: '',
-  typesActions: [],
+  typesActions: [], auditStatus: 'initial',
 };
 
 const initialOrganisation: Organisation = {
