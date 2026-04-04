@@ -172,6 +172,7 @@ export default function Wizard() {
 function StepTypeOrganisme() {
   const { cfaInfo, setCfaInfo } = useWizardStore();
   const selected = cfaInfo.typesActions || [];
+  const auditStatus = cfaInfo.auditStatus || 'initial';
 
   const toggle = (id: TypeAction) => {
     const next = selected.includes(id)
@@ -186,25 +187,59 @@ function StepTypeOrganisme() {
         <CardTitle>Quel type de certification Qualiopi visez-vous ?</CardTitle>
         <p className="text-sm text-muted-foreground mt-1">Sélectionnez un ou plusieurs types d'actions. Les documents générés s'adapteront automatiquement.</p>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
-        {TYPES_ACTIONS.map(t => {
-          const isSelected = selected.includes(t.id);
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => toggle(t.id)}
-              className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition-all ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
-            >
-              <span className="text-2xl mt-0.5">{t.emoji}</span>
-              <div>
-                <p className={`text-sm font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{t.label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t.desc}</p>
-              </div>
-              {isSelected && <Check className="ml-auto w-4 h-4 text-primary shrink-0 mt-0.5" />}
-            </button>
-          );
-        })}
+      <CardContent className="space-y-6">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {TYPES_ACTIONS.map(t => {
+            const isSelected = selected.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => toggle(t.id)}
+                className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition-all ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
+              >
+                <span className="text-2xl mt-0.5">{t.emoji}</span>
+                <div>
+                  <p className={`text-sm font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{t.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t.desc}</p>
+                </div>
+                {isSelected && <Check className="ml-auto w-4 h-4 text-primary shrink-0 mt-0.5" />}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="border-t pt-4">
+          <p className="text-sm font-semibold text-foreground mb-3">Situation vis-à-vis de Qualiopi</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[
+              { id: 'initial' as const, label: 'Audit initial (nouvel entrant)', desc: 'Première certification Qualiopi — pas encore certifié.', emoji: '🆕' },
+              { id: 'renouvellement' as const, label: 'Renouvellement', desc: 'Déjà certifié — audit de surveillance ou renouvellement.', emoji: '🔄' },
+            ].map(opt => {
+              const isSelected = auditStatus === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setCfaInfo({ auditStatus: opt.id })}
+                  className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition-all ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
+                >
+                  <span className="text-2xl mt-0.5">{opt.emoji}</span>
+                  <div>
+                    <p className={`text-sm font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>{opt.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{opt.desc}</p>
+                  </div>
+                  {isSelected && <Check className="ml-auto w-4 h-4 text-primary shrink-0 mt-0.5" />}
+                </button>
+              );
+            })}
+          </div>
+          {auditStatus === 'renouvellement' && (
+            <p className="text-xs text-primary mt-2 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> En renouvellement, l'auditeur attend des preuves d'amélioration continue depuis le dernier audit.
+            </p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
