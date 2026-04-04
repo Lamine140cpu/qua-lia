@@ -4,6 +4,7 @@ import { syncWizardToCloud, loadWizardFromCloud } from '@/lib/sync';
 import { useDashboardStore } from '@/stores/dashboard-store';
 
 export type TypeAction = 'of' | 'bc' | 'vae' | 'cfa';
+export type AuditStatus = 'initial' | 'renouvellement';
 
 export interface CfaInfo {
   nom: string;
@@ -19,6 +20,17 @@ export interface CfaInfo {
   responsable: string;
   /** Types d'actions couverts par la certification Qualiopi */
   typesActions: TypeAction[];
+  /** Nouvel entrant (audit initial) ou renouvellement */
+  auditStatus: AuditStatus;
+}
+
+/** Tracking of collected proofs per indicateur */
+export interface PreuveCollected {
+  preuveId: string;
+  collected: boolean;
+  note?: string;
+  fileName?: string;
+  collectedAt?: string;
 }
 
 export interface Formation {
