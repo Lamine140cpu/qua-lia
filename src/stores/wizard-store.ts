@@ -119,6 +119,7 @@ export const useWizardStore = create<WizardState>()(
       organisation: initialOrganisation,
       selectedIndicateurs: [],
       uploadedFiles: [],
+      collectedPreuves: {},
 
       setCurrentStep: (step) => set({ currentStep: step }),
       setCfaInfo: (info) => {
@@ -151,9 +152,22 @@ export const useWizardStore = create<WizardState>()(
           ? s.selectedIndicateurs.filter(i => i !== id)
           : [...s.selectedIndicateurs, id]
       })),
+      setPreuveCollected: (indicateurId, preuveId, collected, note) => set((s) => {
+        const existing = s.collectedPreuves[indicateurId] || [];
+        const idx = existing.findIndex(p => p.preuveId === preuveId);
+        const entry: PreuveCollected = {
+          preuveId, collected, note,
+          collectedAt: collected ? new Date().toISOString() : undefined,
+        };
+        const updated = idx >= 0
+          ? existing.map((p, i) => i === idx ? entry : p)
+          : [...existing, entry];
+        return { collectedPreuves: { ...s.collectedPreuves, [indicateurId]: updated } };
+      }),
       reset: () => set({
         currentStep: 0, cfaInfo: initialCfaInfo, formations: [],
         organisation: initialOrganisation, selectedIndicateurs: [], uploadedFiles: [],
+        collectedPreuves: {},
       }),
       syncToCloud: () => {
         const s = get();
