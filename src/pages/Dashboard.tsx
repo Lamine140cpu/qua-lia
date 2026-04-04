@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ScrollReveal } from '@/components/ScrollReveal';
 import { Navbar } from '@/components/Navbar';
-import { useWizardStore } from '@/stores/wizard-store';
+import { useWizardStore, type PreuveCollected } from '@/stores/wizard-store';
 import { useDashboardStore } from '@/stores/dashboard-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useSubscriptionStore } from '@/stores/subscription-store';
