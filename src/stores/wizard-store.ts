@@ -4,6 +4,7 @@ import { syncWizardToCloud, loadWizardFromCloud } from '@/lib/sync';
 import { useDashboardStore } from '@/stores/dashboard-store';
 
 export type TypeAction = 'of' | 'bc' | 'vae' | 'cfa';
+export type AuditStatus = 'initial' | 'renouvellement';
 
 export interface CfaInfo {
   nom: string;
@@ -19,6 +20,17 @@ export interface CfaInfo {
   responsable: string;
   /** Types d'actions couverts par la certification Qualiopi */
   typesActions: TypeAction[];
+  /** Nouvel entrant (audit initial) ou renouvellement */
+  auditStatus: AuditStatus;
+}
+
+/** Tracking of collected proofs per indicateur */
+export interface PreuveCollected {
+  preuveId: string;
+  collected: boolean;
+  note?: string;
+  fileName?: string;
+  collectedAt?: string;
 }
 
 export interface Formation {
@@ -60,6 +72,8 @@ export interface WizardState {
   selectedIndicateurs: string[];
   /** Uploaded files (logo, existing docs, proofs) */
   uploadedFiles: UploadedFile[];
+  /** Collected proofs per indicateur */
+  collectedPreuves: Record<string, PreuveCollected[]>;
 
   setCurrentStep: (step: number) => void;
   setCfaInfo: (info: Partial<CfaInfo>) => void;
@@ -71,6 +85,8 @@ export interface WizardState {
   toggleIndicateur: (id: string) => void;
   addUploadedFile: (file: UploadedFile) => void;
   removeUploadedFile: (id: string) => void;
+  /** Mark a proof as collected or not */
+  setPreuveCollected: (indicateurId: string, preuveId: string, collected: boolean, note?: string) => void;
   reset: () => void;
   /** Sync current state to Supabase */
   syncToCloud: () => void;
@@ -81,7 +97,7 @@ export interface WizardState {
 const initialCfaInfo: CfaInfo = {
   nom: '', siret: '', adresse: '', ville: '', codePostal: '',
   siteWeb: '', email: '', telephone: '', nda: '', uai: '', responsable: '',
-  typesActions: [],
+  typesActions: [], auditStatus: 'initial',
 };
 
 const initialOrganisation: Organisation = {
@@ -103,6 +119,7 @@ export const useWizardStore = create<WizardState>()(
       organisation: initialOrganisation,
       selectedIndicateurs: [],
       uploadedFiles: [],
+      collectedPreuves: {},
 
       setCurrentStep: (step) => set({ currentStep: step }),
       setCfaInfo: (info) => {
@@ -135,9 +152,22 @@ export const useWizardStore = create<WizardState>()(
           ? s.selectedIndicateurs.filter(i => i !== id)
           : [...s.selectedIndicateurs, id]
       })),
+      setPreuveCollected: (indicateurId, preuveId, collected, note) => set((s) => {
+        const existing = s.collectedPreuves[indicateurId] || [];
+        const idx = existing.findIndex(p => p.preuveId === preuveId);
+        const entry: PreuveCollected = {
+          preuveId, collected, note,
+          collectedAt: collected ? new Date().toISOString() : undefined,
+        };
+        const updated = idx >= 0
+          ? existing.map((p, i) => i === idx ? entry : p)
+          : [...existing, entry];
+        return { collectedPreuves: { ...s.collectedPreuves, [indicateurId]: updated } };
+      }),
       reset: () => set({
         currentStep: 0, cfaInfo: initialCfaInfo, formations: [],
         organisation: initialOrganisation, selectedIndicateurs: [], uploadedFiles: [],
+        collectedPreuves: {},
       }),
       syncToCloud: () => {
         const s = get();
