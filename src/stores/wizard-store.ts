@@ -72,6 +72,8 @@ export interface WizardState {
   selectedIndicateurs: string[];
   /** Uploaded files (logo, existing docs, proofs) */
   uploadedFiles: UploadedFile[];
+  /** Collected proofs per indicateur */
+  collectedPreuves: Record<string, PreuveCollected[]>;
 
   setCurrentStep: (step: number) => void;
   setCfaInfo: (info: Partial<CfaInfo>) => void;
@@ -83,6 +85,8 @@ export interface WizardState {
   toggleIndicateur: (id: string) => void;
   addUploadedFile: (file: UploadedFile) => void;
   removeUploadedFile: (id: string) => void;
+  /** Mark a proof as collected or not */
+  setPreuveCollected: (indicateurId: string, preuveId: string, collected: boolean, note?: string) => void;
   reset: () => void;
   /** Sync current state to Supabase */
   syncToCloud: () => void;
