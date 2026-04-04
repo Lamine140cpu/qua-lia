@@ -30,7 +30,7 @@ import { VersionHistoryModal } from '@/components/dashboard/VersionHistoryModal'
 export default function Dashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { cfaInfo, formations, organisation } = useWizardStore();
+  const { cfaInfo, formations, organisation, collectedPreuves } = useWizardStore();
   const { documents, setDocStatus, auditResult, auditLoading, auditError, setAuditResult, setAuditLoading, setAuditError, cleanupStuckGenerating, restoreVersion } = useDashboardStore();
   const { conversations } = useChatStore();
   const addNotification = useNotificationStore((s) => s.addNotification);
