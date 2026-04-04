@@ -287,16 +287,39 @@ export default function Dashboard() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>{applicableIds.length} indicateur{applicableIds.length > 1 ? 's' : ''}{skippedCount > 0 ? ` (${skippedCount} n/a)` : ''}</span>
-                        {generatedForCritere > 0 && (
+                      {(() => {
+                        // Count dynamic proofs for this critere
+                        const totalDynamic = applicableIds.reduce((sum, id) => {
+                          const ind = critere.indicateurs[id];
+                          return sum + (ind?.preuves?.filter(p => p.dynamic)?.length || 0);
+                        }, 0);
+                        const collectedCount = applicableIds.reduce((sum, id) => {
+                          const cp = collectedPreuves[id] || [];
+                          return sum + cp.filter(c => c.collected).length;
+                        }, 0);
+                        return (
                           <>
-                            <span>&middot;</span>
-                            <span className="text-[hsl(145,50%,36%)]">{generatedForCritere} doc(s) générés</span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>{applicableIds.length} indicateur{applicableIds.length > 1 ? 's' : ''}{skippedCount > 0 ? ` (${skippedCount} n/a)` : ''}</span>
+                              {generatedForCritere > 0 && (
+                                <>
+                                  <span>&middot;</span>
+                                  <span className="text-[hsl(145,50%,36%)]">{generatedForCritere} doc(s)</span>
+                                </>
+                              )}
+                              {totalDynamic > 0 && (
+                                <>
+                                  <span>&middot;</span>
+                                  <span className={collectedCount === totalDynamic ? 'text-[hsl(145,50%,36%)]' : 'text-[hsl(45,75%,48%)]'}>
+                                    📋 {collectedCount}/{totalDynamic} preuves
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </>
-                        )}
-                      </div>
+                        );
+                      })()}
                       <div className="flex items-center gap-2">
                         <Progress value={pct} className="h-1.5 flex-1" />
                         <span className="text-xs font-semibold tabular-nums text-muted-foreground">{pct}%</span>
