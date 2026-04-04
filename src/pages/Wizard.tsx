@@ -398,7 +398,7 @@ function StepOrganisation() {
 }
 
 function StepIndicateurs() {
-  const { selectedIndicateurs, toggleIndicateur, setSelectedIndicateurs, cfaInfo } = useWizardStore();
+  const { selectedIndicateurs, toggleIndicateur, setSelectedIndicateurs, cfaInfo, collectedPreuves, setPreuveCollected } = useWizardStore();
   const typesActions = (cfaInfo.typesActions || []) as TypeAction[];
   const applicableIds = getAllIndicateurs().filter(i => indicateurAppliesToTypes(i.id, typesActions)).map(i => i.id);
   const allApplicableSelected = applicableIds.every(id => selectedIndicateurs.includes(id));
@@ -406,7 +406,12 @@ function StepIndicateurs() {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>Sélection des indicateurs</CardTitle>
+        <div>
+          <CardTitle>Sélection des indicateurs</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Les indicateurs cochés seront traités par l'agent IA. Les preuves dynamiques (📋) sont à collecter manuellement.
+          </p>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -425,22 +430,58 @@ function StepIndicateurs() {
               {Object.entries(critere.indicateurs).map(([id, ind]) => {
                 const applicable = indicateurAppliesToTypes(id, typesActions);
                 const typeNote = getIndicateurTypeNote(id);
+                const isSelected = selectedIndicateurs.includes(id);
+                const dynamicProofs = ind.preuves.filter(p => p.dynamic);
+                const collected = collectedPreuves[id] || [];
+                const collectedCount = collected.filter(c => c.collected).length;
+
                 return (
-                  <label key={id} className={`flex items-start gap-3 rounded-md border p-3 transition-colors ${applicable ? 'cursor-pointer hover:bg-muted/50' : 'opacity-40 cursor-not-allowed bg-muted/20'}`}>
-                    <Checkbox
-                      checked={selectedIndicateurs.includes(id)}
-                      onCheckedChange={() => applicable && toggleIndicateur(id)}
-                      disabled={!applicable}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <span className="text-sm font-medium text-foreground">{id}</span>
-                      <span className="ml-2 text-sm text-muted-foreground">{ind.titre}</span>
-                      {!applicable && typeNote && (
-                        <span className="ml-2 text-xs text-orange-500">({typeNote})</span>
-                      )}
-                    </div>
-                  </label>
+                  <div key={id} className={`rounded-md border transition-colors ${applicable ? '' : 'opacity-40 bg-muted/20'}`}>
+                    <label className={`flex items-start gap-3 p-3 ${applicable ? 'cursor-pointer hover:bg-muted/50' : 'cursor-not-allowed'}`}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => applicable && toggleIndicateur(id)}
+                        disabled={!applicable}
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-foreground">{id}</span>
+                        <span className="ml-2 text-sm text-muted-foreground">{ind.titre}</span>
+                        {!applicable && typeNote && (
+                          <span className="ml-2 text-xs text-orange-500">({typeNote})</span>
+                        )}
+                        {applicable && dynamicProofs.length > 0 && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            📋 {collectedCount}/{dynamicProofs.length} preuves collectées
+                          </span>
+                        )}
+                      </div>
+                    </label>
+                    {/* Show dynamic proofs checklist if selected */}
+                    {isSelected && applicable && dynamicProofs.length > 0 && (
+                      <div className="border-t px-3 py-2 bg-muted/20 space-y-1">
+                        <p className="text-xs font-semibold text-muted-foreground mb-1">Preuves à collecter :</p>
+                        {dynamicProofs.map(p => {
+                          const isCollected = collected.find(c => c.preuveId === p.id)?.collected || false;
+                          return (
+                            <label key={p.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5">
+                              <Checkbox
+                                checked={isCollected}
+                                onCheckedChange={(checked) => setPreuveCollected(id, p.id, !!checked)}
+                                className="h-3.5 w-3.5"
+                              />
+                              <span className={isCollected ? 'text-foreground line-through opacity-60' : 'text-muted-foreground'}>
+                                {p.label}
+                              </span>
+                              {p.description && (
+                                <span className="text-muted-foreground/60 ml-1">— {p.description}</span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
